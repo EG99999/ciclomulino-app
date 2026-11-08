@@ -30,7 +30,7 @@ Non verificato: service worker/installazione (il browser di prova non lo support
 ## Open Trainer: schermate e funzioni (7 nov 2026)
 Home (logo, VAI, ingranaggio) → Cosa pedaliamo? (piano, crea evento, pedalata libera, test FTP ramp e 20', tastiera) → Collega → pedali.
 Impostazioni: profilo (peso → W/kg, FTP personale), bici (marca, modello, colori, ruote), ciclista (maglia, motivo, casco, emblemi, scritta, tua immagine), gioco, audio, grafica, dati.
-Cartella dati: Impostazioni → Dati → «Scegli la cartella» e scegli `C:\Users\eliag\OneDrive\005-ALLENAMENTI\Open Trainer`: piano-app.json e workouts\ entrano; .FIT, storico.json e ftp-test.json escono. OneDrive sincronizza da solo.
+Cartella dati: Impostazioni → Dati → «Scegli la cartella» e scegli la tua cartella OneDrive dei dati (per esempio `OneDrive\005-ALLENAMENTI\Open Trainer`): piano-app.json e workouts\ entrano; .FIT, storico.json e ftp-test.json escono. OneDrive sincronizza da solo.
 Test FTP: dopo il test puoi salvare la FTP nelle impostazioni (il piano del coach non si tocca) e viene scritto `ftp-test.json` nella cartella dati.
 Pedalata libera col trainer vero: modalità a pendenza FTMS (non verificata sul Suito-T; se non risponde passa a un carico fisso con ↑/↓).
 
