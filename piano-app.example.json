@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "generated": "2026-11-07",
+  "ftp": 271,
+  "sessions": [
+    {
+      "id": "2026-11-16-ciclomulino-vo2",
+      "date": "2026-11-16",
+      "time": "06:00",
+      "title": "Ciclomulino VO2max 5x3'",
+      "type": "VO2max 5x3'",
+      "notes": "VO2max: 5x3' a 298-325 W (110-120% FTP), recupero 3'. Cadenza 90+. Finisci entro le 6:50.",
+      "blocks": [
+        { "t": "warmup", "n": "Riscaldamento", "d": 360, "lo": 100, "hi": 120 },
+        { "t": "warmup", "n": "Progressivo", "d": 240, "lo": 130, "hi": 160 },
+        { "rep": 5, "steps": [
+          { "t": "interval", "n": "VO2max", "d": 180, "lo": 298, "hi": 325, "cad": [90, 100] },
+          { "t": "recovery", "n": "Recupero", "d": 180, "lo": 90, "hi": 100 }
+        ] },
+        { "t": "cooldown", "n": "Defaticamento", "d": 300, "lo": 90, "hi": 100 }
+      ]
+    },
+    {
+      "id": "2026-11-23-ciclomulino-soglia",
+      "date": "2026-11-23",
+      "time": "06:00",
+      "title": "Ciclomulino soglia 2x10'",
+      "type": "Soglia 2x10'",
+      "notes": "Esempio con ripetizioni lunghe. Range sempre almeno 10 W.",
+      "blocks": [
+        { "t": "warmup", "n": "Riscaldamento", "d": 360, "lo": 100, "hi": 120 },
+        { "t": "warmup", "n": "Progressivo", "d": 240, "lo": 130, "hi": 160 },
+        { "rep": 2, "steps": [
+          { "t": "interval", "n": "Soglia", "d": 600, "lo": 257, "hi": 271, "cad": [85, 95] },
+          { "t": "recovery", "n": "Recupero", "d": 240, "lo": 90, "hi": 100 }
+        ] },
+        { "t": "cooldown", "n": "Defaticamento", "d": 300, "lo": 90, "hi": 100 }
+      ]
+    },
+    {
+      "id": "2026-11-13-ciclomulino-z2",
+      "date": "2026-11-13",
+      "time": "06:00",
+      "title": "Ciclomulino z2 40'",
+      "type": "Z2 40'",
+      "notes": "Z2 puro, FC sotto 135. Qui il tetto FC è info a schermo (hrCap), il carico ERG segue i watt.",
+      "blocks": [
+        { "t": "warmup", "n": "Riscaldamento", "d": 300, "lo": 100, "hi": 120, "hrCap": 135 },
+        { "t": "interval", "n": "Z2", "d": 1800, "lo": 170, "hi": 200, "cad": [85, 95], "hrCap": 135 },
+        { "t": "cooldown", "n": "Defaticamento", "d": 300, "lo": 90, "hi": 100 }
+      ]
+    },
+    {
+      "id": "esempio-percento-ftp-distanza",
+      "date": null,
+      "time": null,
+      "title": "Esempio: % FTP e distanza (solo per test del parser)",
+      "type": "Test",
+      "notes": "Un blocco può usare pct (frazioni di FTP) al posto di lo/hi, e dist (metri) al posto di d. grade (%) forza la pendenza invece di generarla.",
+      "blocks": [
+        { "t": "warmup", "n": "Riscaldamento", "dist": 3000, "lo": 100, "hi": 120 },
+        { "t": "interval", "n": "Sweet spot", "d": 600, "pct": [0.90, 0.95], "cad": [85, 95], "grade": 3 },
+        { "t": "rest", "n": "Pausa", "d": 120 },
+        { "t": "cooldown", "n": "Defaticamento", "d": 300, "lo": 90, "hi": 100 }
+      ]
+    }
+  ]
+}

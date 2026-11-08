@@ -1,0 +1,20 @@
+.acc{font-weight:400;color:var(--acc)}
+.stepbar b,.done .g b,.rng b{font-weight:400;color:var(--ink)}
+.stepbar b.acc{color:var(--acc)}
+.conns{display:flex;gap:6px;flex-wrap:wrap}
+.plan{background:var(--panel);border:3px solid var(--line);padding:8px 10px;display:grid;gap:6px}
+.plan .rowb{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{display:inline-flex;align-items:center}
+select{font-family:var(--vt);font-size:20px;background:var(--panel2);color:var(--ink);border:3px solid var(--line);padding:6px 8px;min-height:40px;max-width:100%;flex:1 1 220px}
+select:disabled{opacity:.5}
+.warnbox{border:2px solid var(--acc);background:#2b2410;color:var(--acc);padding:6px 8px;font-size:18px;line-height:1.15}
+.warnbox.err{border-color:var(--bad);background:#2b1018;color:var(--bad)}
+.warnbox[hidden]{display:none}
+.drop{position:fixed;inset:0;background:rgba(10,8,28,.9);border:6px dashed var(--acc);display:grid;place-items:center;font-family:var(--px);font-size:14px;color:var(--acc);z-index:10}
+.drop[hidden]{display:none}
+.tiles{grid-template-columns:repeat(3,minmax(0,1fr))}
+.tile .v{font-size:clamp(12px,3.2vw,18px)}
+.done .g b{font-weight:400}
+#simPanel{display:grid;gap:9px}
+#simPanel[hidden]{display:none}
+button:focus-visible,select:focus-visible,.btn:focus-within{outline:3px solid var(--cool);outline-offset:2px}

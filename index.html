@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Open Trainer</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#14102c">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap">
+<link rel="stylesheet" href="css/game.css">
+<link rel="stylesheet" href="css/screens.css">
+</head>
+<body>
+<div id="game">
+  <canvas id="scene" width="320" height="180"></canvas>
+  <canvas id="scene3d" hidden></canvas>
+  <div class="vig"></div>
+  <div id="scr" hidden></div>
+  <div id="fpsBadge" class="fpsb" hidden></div>
+
+  <div class="topbar">
+    <span class="logo">OPEN TRAINER</span>
+    <div class="meta">
+      <span><b id="wkType">—</b></span>
+      <span class="bk">🚲 <b id="bikeName">—</b></span>
+      <span><b id="clock">—</b></span>
+      <span>⏱ <b id="tTot">0:00</b> / <b id="tTotMax">0:00</b></span>
+    </div>
+    <div class="conns">
+      <button class="conn off" id="btnHome" hidden>🏠 HOME</button>
+      <button class="conn off" id="btnTrainer">⚡ TRAINER</button>
+      <button class="conn off" id="btnHr">♥ FC</button>
+      <button class="conn off" id="btnCam" title="Cambia visuale (V)">🎥 VISTA</button>
+      <button class="conn off" id="btnMenu" aria-expanded="false">☰ MENU</button>
+    </div>
+  </div>
+
+  <div hidden><span id="hudW"></span><span id="hudTgt"></span><span id="hudHR"></span><span id="hudCad"></span></div>
+
+  <div class="stats left">
+    <div class="tile pw big" id="tileW"><div class="l">WATT</div><div class="v" id="tW">0</div><div class="s" id="tTgt">—</div></div>
+    <div class="tile"><div class="l">MEDIA 3"</div><div class="v" id="tA3">0</div><div class="s">W</div></div>
+    <div class="tile"><div class="l">MEDIA STEP</div><div class="v" id="tAS">0</div><div class="s">W</div></div>
+    <div class="tile"><div class="l">% FTP</div><div class="v" id="tPct">0</div><div class="s" id="tFtp">FTP — W</div></div>
+    <div class="tile"><div class="l">W/KG</div><div class="v" id="tWkg">—</div><div class="s" id="tWkgAvg">peso nelle impostazioni</div></div>
+    <div class="card pgcard"><div class="l">POTENZA · ULTIMI 2'</div><canvas id="pgraph" width="240" height="76"></canvas></div>
+  </div>
+  <div class="stats right">
+    <div class="tile cd"><div class="l">CADENZA</div><div class="v" id="tCad">0</div><div class="s">rpm</div></div>
+    <div class="tile hr"><div class="l">FC</div><div class="v" id="tHR">--</div><div class="s">bpm</div></div>
+    <div class="tile"><div class="l">KM/H</div><div class="v" id="tKmh">0</div><div class="s" id="tKm">0.0 km</div></div>
+    <div class="tile"><div class="l">PENDENZA</div><div class="v" id="tGr">0</div><div class="s" id="tDp">D+ 0 m</div></div>
+    <div class="tile"><div class="l">CARICO ERG</div><div class="v" id="tL">100</div><div class="s">%</div></div>
+    <div class="card nxcard"><div class="l">PROSSIMI STEP</div><div id="nextList"></div></div>
+  </div>
+
+  <canvas id="ribbon" width="720" height="54"></canvas>
+  <div class="coach" id="coach"></div>
+  <div class="banner" id="banner">PRONTO</div>
+  <div class="keyhelp" id="keyhelp" hidden><b>↑</b> pedala <b>↓</b> frena <b>← →</b> sterza <b>SPAZIO</b> salta <b>P</b> pausa <b>ESC</b> esci</div>
+  <div class="env" id="envName"></div>
+
+  <div class="bottom">
+    <div class="stepbar">
+      <div class="row"><span class="stepname" id="stName">—</span><span>Step: <b id="stT" class="acc">0:00</b></span></div>
+      <div class="bar"><i id="stBar"></i></div>
+      <div class="row mute">
+        <span>Serie: <b id="serie">—</b></span>
+        <span>Blocchi: <b id="blocchi">—</b></span>
+        <span>Prossimo: <b id="next">—</b></span>
+      </div>
+      <div class="row mute" id="stExtra"></div>
+    </div>
+    <div class="side">
+      <div class="seg"><span class="sl">ALTIMETRIA</span><span class="sl">PERCORSO</span><span class="hint" id="geo">0.0 km · 0%</span></div>
+      <div class="sc"><canvas id="side" width="240" height="80"></canvas><canvas id="map" width="160" height="80"></canvas></div>
+    </div>
+  </div>
+  <div class="goz"><button class="go" id="btnGo">▶ AVVIA</button></div>
+
+  <aside class="menu" id="menu" hidden>
+    <div class="plan" id="planBox">
+      <h3>PIANO</h3>
+      <div class="rowb">
+        <label class="btn" for="fileIn">📂 CARICA piano-app.json</label>
+        <input type="file" id="fileIn" accept=".json,application/json" hidden>
+      </div>
+      <select id="sessSel" disabled aria-label="Seduta"><option>Nessun piano caricato</option></select>
+      <div class="hint" id="planInfo">Trascina qui il file <b>piano-app.json</b> (oppure usa il pulsante).</div>
+      <div class="warnbox" id="warnBox" hidden></div>
+    </div>
+    <div class="ctrl">
+      <h3>SEDUTA</h3>
+      <div class="rowb"><button id="btnSkip">⏭ SALTA STEP</button><button id="btnEnd">⏹ TERMINA</button><button id="btnReset">↺ RESET</button></div>
+      <h3>DISPOSITIVI E SCHERMO</h3>
+      <div class="rowb"><button class="conn off" id="btnSim">🧪 SIMULATORE</button><button id="btnKeys">⌨ MODALITÀ TASTIERA</button><button id="btnFull">⛶ SCHERMO INTERO</button></div>
+      <h3>AIUTO</h3>
+      <div class="rowb"><button id="btnTut">📖 TUTORIAL</button><button id="btnWiz">⚙ CONFIGURAZIONE INIZIALE</button></div>
+      <h3>CARTELLA DATI (OneDrive sul PC)</h3>
+      <div id="folderHome"><div id="folderBox" class="ctrl">
+        <div class="hint" id="folderStatus">Nessuna cartella scelta.</div>
+        <div class="rowb"><button id="btnFolderPick" class="go">SCEGLI LA CARTELLA</button><button id="btnFolderRe" class="go" hidden>RIAUTORIZZA</button><button id="btnFolderSync" hidden>CONTROLLA ORA</button><button id="btnFolderOff" hidden>SCOLLEGA</button></div>
+      </div></div>
+      <h3>ACCESSO MICROSOFT (facoltativo)</h3>
+      <div id="cloudHome"><div id="cloudBox" class="ctrl">
+        <div class="hint" id="cloudStatus">Non collegato. Senza OneDrive l'app funziona lo stesso: i file restano sul tuo computer.</div>
+        <label id="msClientRow" class="f"><span class="hint">Client ID Microsoft (vedi GUIDA-ONEDRIVE.md)</span><input id="msClient" type="text" placeholder="incolla qui l'ID"></label>
+        <div class="rowb"><button id="btnMsLogin" class="go">ACCEDI CON MICROSOFT</button><button id="btnMsSync" hidden>SINCRONIZZA ORA</button><button id="btnMsPush" hidden>CARICA IL PIANO ATTUALE</button><button id="btnMsLogout" hidden>ESCI</button></div>
+        <label class="opt"><input type="checkbox" id="chkAutoSync"><span>Aggiorna il piano da OneDrive all'avvio e ogni 10 minuti</span></label>
+        <label class="opt"><input type="checkbox" id="chkAutoFit"><span>Carica il .FIT su OneDrive a fine seduta</span></label>
+      </div></div>
+      <h3>PERCORSO</h3>
+      <select id="routeSel" aria-label="Percorso"></select>
+      <div class="rowb"><label class="btn" for="gpxIn">📍 IMPORTA GPX/TCX (Garmin Connect)</label><input type="file" id="gpxIn" accept=".gpx,.tcx,application/gpx+xml,text/xml" hidden></div>
+      <div id="startRow" hidden><select id="startSel" aria-label="Partenza"></select></div>
+      <div class="hint" id="routeInfo">—</div>
+      <div class="hint" id="routeAttr" style="font-size:14px"></div>
+      <h3>BICI</h3>
+      <select id="bikeSel" aria-label="Bici"></select>
+      <h3>SUONI</h3>
+      <div class="rowb"><button id="btnSound">🔊 SUONI: ON</button><input type="range" id="vol" min="0" max="1" step="0.05" value="0.7" aria-label="Volume"></div>
+      <div id="simPanel" hidden>
+        <h3>SIMULATORE</h3>
+        <div class="rng"><span>Cadenza</span><input type="range" id="rCad" min="40" max="110" value="88"><b id="rCadV">88</b></div>
+        <div class="rowb"><button id="btnFat">FATICA: OFF</button><button id="btnPed">PEDALO: SÌ</button><button id="btnDrop">SEGNALE: OK</button></div>
+        <div class="rowb"><button class="sel" data-sp="1">×1</button><button data-sp="5">×5</button><button data-sp="20">×20</button><button data-sp="60">×60</button></div>
+        <div class="hint">Fatica ON: nei work la cadenza cala, scatta il carico al 50% (&lt;60 rpm per 5") e torna al 100% (&gt;75 per 3"). «Segnale» simula una disconnessione.</div>
+      </div>
+      <h3>AMBIENTE</h3>
+      <div class="rowb" id="themes"><button data-th="auto" class="sel">AUTO</button><button data-th="country">CAMPAGNA</button><button data-th="hills">COLLINE</button><button data-th="mountains">MONTAGNA</button><button data-th="city">CITTÀ</button></div>
+      <h3>PRESTAZIONI</h3><div class="hint" id="fps">FPS —</div>
+      <h3>EVENTI</h3>
+      <div class="log" id="log"></div>
+    </div>
+  </aside>
+</div>
+
+<div class="done" id="recover" hidden>
+  <div class="box">
+    <h2 id="recTitle">SEDUTA INTERROTTA</h2>
+    <div class="hint" id="recInfo"></div>
+    <button class="go" id="recResume">▶ RIPRENDI DA DOVE ERI</button>
+    <button id="recFit">⬇ SCARICA IL .FIT DEI DATI SALVATI</button>
+    <button id="recDiscard">SCARTA</button>
+  </div>
+</div>
+<div class="wiz" id="wizard" hidden></div>
+<div id="tut" hidden><div id="tutHole"></div><div id="tutCard"></div></div>
+<div class="drop" id="drop" hidden>RILASCIA piano-app.json</div>
+<div class="toast" id="toast" hidden></div>
+<div class="done" id="done" hidden>
+  <div class="box">
+    <h2 id="dTitle">SEDUTA COMPLETATA</h2>
+    <div class="g">
+      <div><span>DURATA</span><b id="dDur">-</b></div>
+      <div><span>POTENZA MEDIA</span><b id="dP">-</b></div>
+      <div><span>FC MEDIA</span><b id="dHR">-</b></div>
+      <div><span>ENERGIA</span><b id="dKJ">-</b></div>
+    </div>
+    <button class="go" id="btnFit">⬇ SCARICA .FIT (Garmin Connect)</button>
+    <button id="btnCloseDone">CHIUDI</button>
+    <div id="dTest" hidden><div class="note" id="dTestTxt"></div><button class="go" id="btnUseFtp">USA COME MIA FTP</button></div>
+    <div class="hint">Importa il file a mano su Garmin Connect (Importa dati). Nessun upload automatico.</div>
+  </div>
+</div>
+
+<script src="js/vendor/three.min.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

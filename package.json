@@ -1,0 +1,1 @@
+{"name":"open-trainer","private":true,"type":"module","scripts":{"start":"node serve.mjs","test":"node --test \"test/*.test.js\""}}

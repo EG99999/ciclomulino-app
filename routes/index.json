@@ -1,0 +1,29 @@
+{
+ "attribution": "© OpenStreetMap contributors · quote EU-DEM © Copernicus",
+ "routes": [
+  {
+   "id": "chiari-brescia",
+   "name": "Chiari → Brescia",
+   "len": 25772,
+   "gain": 79,
+   "loop": false,
+   "file": "routes/chiari-brescia.json"
+  },
+  {
+   "id": "franciacorta",
+   "name": "Franciacorta da Chiari",
+   "len": 57070,
+   "gain": 379,
+   "loop": true,
+   "file": "routes/franciacorta.json"
+  },
+  {
+   "id": "giro-iseo",
+   "name": "Giro del lago d'Iseo da Chiari",
+   "len": 97886,
+   "gain": 863,
+   "loop": true,
+   "file": "routes/giro-iseo.json"
+  }
+ ]
+}
