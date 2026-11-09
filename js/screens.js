@@ -109,7 +109,7 @@ export function createScreens(api) {
 
   /* ---------------- IMPOSTAZIONI ---------------- */
   const WHEELS = [[2096, '700x23C'], [2105, '700x25C'], [2136, '700x28C (di serie sulle bici da strada)'], [2155, '700x32C'], [2168, '700x35C'], [2180, '700x38C'], [2200, '700x40C']];   // circonferenze esterne in mm (tabelle dei ciclocomputer)
-  const TABS = [['profilo', 'PROFILO'], ['bici', 'BICI'], ['computer', 'COMPUTER'], ['ciclista', 'CICLISTA'], ['gioco', 'GIOCO'], ['audio', 'AUDIO'], ['grafica', 'GRAFICA'], ['dati', 'DATI'], ['aiuto', 'AIUTO']];
+  const TABS = [['profilo', 'PROFILO'], ['bici', 'BICI'], ['computer', 'COMPUTER'], ['ciclista', 'CICLISTA'], ['gioco', 'GIOCO'], ['audio', 'AUDIO'], ['grafica', 'GRAFICA'], ['dati', 'DATI'], ['debug', 'DEBUG'], ['aiuto', 'AIUTO']];
   const fld = {
     num: (k, label, o = {}) => `<label class="f">${label}<input type="number" data-k="${k}" data-t="n" value="${esc(getPath(api.S, k) || '')}" ${o.min != null ? `min="${o.min}"` : ''} ${o.max != null ? `max="${o.max}"` : ''} step="${Number(o.step) || 1}" placeholder="${esc(o.ph || '')}">${o.hint ? `<i class="hint">${o.hint}</i>` : ''}</label>`,
     txt: (k, label, o = {}) => `<label class="f">${label}<input type="text" data-k="${k}" value="${esc(getPath(api.S, k))}" maxlength="${Number(o.max) || 30}" placeholder="${esc(o.ph || '')}"></label>`,
@@ -149,6 +149,12 @@ export function createScreens(api) {
       grafica: () => `<h2>Grafica</h2>${fld.sel('style', 'Stile', [['voxel', 'Voxel (blocchi 3D)'], ['ps1', 'Low-poly retrò (PlayStation 1)'], ['iso', 'Diorama isometrico'], ['hd2d', 'HD-2D (sprite in 3D)']])}${fld.sel('quality', 'Qualità', [[3, 'Alta (consigliata)'], [2, 'Media'], [1, 'Veloce (PC lenti)']])}<div class="note">Se il PC fa fatica abbassa la qualità o scegli «Pixel 2D». Se il browser non supporta il 3D (WebGL) l'app usa da sola il Pixel 2D.</div>`,
       dati: () => `<h2>Dati e sincronizzazione</h2><p>Il piano entra e i .FIT, lo storico e i test escono dalla cartella che scegli (la tua cartella OneDrive «Open Trainer»: ci pensa OneDrive a sincronizzare).</p><div id="folderSlot"></div><div id="cloudSlot"></div>
         <h2>Impostazioni</h2><div class="rowb"><button class="mc small" data-act="expSet">ESPORTA</button><label class="mc small" for="impSet">IMPORTA</label><input type="file" id="impSet" accept=".json" hidden><button class="mc small danger" data-act="wipe">CANCELLA I DATI LOCALI</button></div>`,
+      debug: () => `<h2>Debug</h2>${fld.chk('debug', 'Registra tutto (scatola nera)', 'Salva ogni dato che entra e che esce: pacchetti Bluetooth grezzi, comandi al trainer, logica ERG, tasti, errori, prestazioni. Resta sul tuo computer: non viene inviato a nessuno.')}
+        <div class="note" id="dbgStat">…</div>
+        <div class="rowb"><button class="mc small" data-act="dbgSave">SCARICA IL LOG</button><button class="mc small" data-act="dbgMark">SEGNA UN PUNTO</button><button class="mc small" data-act="dbgPanel">PANNELLO LIVE</button></div>
+        <label class="f">Nota per il log<input type="text" id="dbgNote" maxlength="200" placeholder="es. il carico ha fatto uno strappo a metà"></label><div class="rowb"><button class="mc small" data-act="dbgNoteAdd">AGGIUNGI LA NOTA</button></div>
+        <h2>Log salvati su questo computer</h2><div id="dbgRuns" class="note">…</div><div class="rowb"><button class="mc small danger" data-act="dbgClear">CANCELLA I LOG SALVATI</button></div>
+        <p class="hint">Se hai collegato la cartella dati, il log viene scritto anche nella sottocartella «debug». In gara: <b>B</b> segna un punto nel log, <b>I</b> apre il pannello live con i pacchetti Bluetooth.</p>`,
       aiuto: () => `<h2>Aiuto</h2><div class="rowb"><button class="mc small" data-act="tut">TUTORIAL</button><button class="mc small" data-act="wiz">CONFIGURAZIONE INIZIALE</button></div><p class="hint">Tasti in gara: Spazio avvia/pausa · V vista · M menu · F schermo intero · N suoni.</p>`
     };
     root.innerHTML = `<div class="panel wide"><h1>IMPOSTAZIONI</h1><div class="split set"><div class="tabs">${TABS.map(t => `<button class="mc tab ${t[0] === tab ? 'sel' : ''}" data-tab="${t[0]}">${t[1]}</button>`).join('')}</div><div class="pane" id="setPane">${body[tab]()}</div></div>
@@ -156,7 +162,17 @@ export function createScreens(api) {
     root.querySelectorAll('.tab').forEach(b => b.onclick = () => { tab = b.dataset.tab; settings(); });
     bindSettings(); wire();
     if (tab === 'dati') { $('folderSlot').appendChild($('folderBox')); $('cloudSlot').appendChild($('cloudBox')); api.cloudUi && api.cloudUi(); api.folderUi && api.folderUi(); }
+    if (tab === 'debug') { dbgRefresh(); const c = root.querySelector('[data-k="debug"]'); if (c) c.addEventListener('change', () => setTimeout(dbgRefresh, 500)); }
     preview(); wkg();
+  }
+  /** pagina DEBUG: stato della registrazione e log salvati nel browser */
+  async function dbgRefresh() {
+    const el = $('dbgStat'); if (!el) return;
+    const st = api.dbgStats(), fm = n => (n > 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.round(n / 1e3) + ' kB');
+    el.innerHTML = st.on ? `<b>● In registrazione</b> · ${st.lines} righe · ${fm(st.bytes)} · punti segnati: ${st.marks}<br>Salvataggio: ${st.sinks.map(k => esc(k.name) + ': ' + (k.dead ? 'ERRORE (' + esc(k.err) + ')' : k.sent ? 'ok' : k.name === 'cartella' ? 'non collegata o da riautorizzare (Impostazioni → Dati)' : 'in attesa')).join(' · ') || 'solo memoria'}` : 'Registrazione spenta.';
+    const runs = await api.dbgRuns(), box = $('dbgRuns'); if (!box) return;
+    box.innerHTML = runs.length ? runs.map(r => `<div class="rowb" style="align-items:center;justify-content:space-between"><span>${esc(new Date(r.start).toLocaleString('it-IT'))} · ${r.lines} righe${st.on && r.runId === st.runId ? ' · in corso' : ''}</span><button class="mc small" data-run="${esc(r.runId)}">SCARICA</button></div>`).join('') : 'Nessun log salvato nel browser.';
+    box.querySelectorAll('[data-run]').forEach(b => { b.onclick = () => api.dbgRun(b.dataset.run); });
   }
   const wkg = () => { const n = $('wkgNote'); if (!n) return; const w = +api.S.weight, f = api.ftp(); n.innerHTML = w > 0 ? `Con la FTP di riferimento (${f} W): <b>${(f / w).toFixed(2)} W/kg</b>.` : 'Inserisci il peso per vedere i W/kg.'; };
   const preview = () => { const c = $('pvRider'); if (c) api.previewRider(c); };
@@ -186,6 +202,9 @@ export function createScreens(api) {
     else if (a === 'ccReset') { api.ccSet(null); settings(); }
     else if (a === 'testSound') api.testSound(); else if (a === 'tut') api.startTutorial(); else if (a === 'wiz') api.openWizard();
     else if (a === 'expSet') api.exportSettings(); else if (a === 'wipe') api.wipe();
+    else if (a === 'dbgSave') api.dbgDownload(); else if (a === 'dbgMark') { api.dbgMark(); dbgRefresh(); } else if (a === 'dbgPanel') api.dbgPanel();
+    else if (a === 'dbgNoteAdd') { const i = $('dbgNote'); if (i && i.value.trim()) { api.dbgNote(i.value.trim()); i.value = ''; dbgRefresh(); } }
+    else if (a === 'dbgClear') { if (confirm('Cancellare i log di debug salvati nel browser? (Il log in corso e i file nella cartella dati non vengono toccati)')) api.dbgClear().then(dbgRefresh); }
   }
 
   /* ---------------- STORICO ---------------- */

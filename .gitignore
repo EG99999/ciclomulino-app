@@ -13,3 +13,5 @@ SPEC.md
 .env.*
 *.pem
 *.pfx
+# checklist personale di prova
+TEST-STASERA.md

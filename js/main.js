@@ -13,10 +13,11 @@ import { Route, routeFromFile } from './route.js';
 import { loadSettings, saveSettings, sanitizeSettings, settingsPayload } from './settings.js';
 import { StateSync, MOD_KEY } from './sync.js';
 import { OneDrive, CloudSync } from './onedrive.js';
-import { MS_CLIENT_ID } from './config.js';
+import { MS_CLIENT_ID, BUILD } from './config.js';
+import * as D from './debug.js';
 import { runWizard, runTutorial } from './onboarding.js';
 import { createScreens } from './screens.js';
-import { folderSupported, pickFolder, savedFolder, forgetFolder, folderPermission, FolderSync } from './folder.js';
+import { folderSupported, pickFolder, savedFolder, forgetFolder, folderPermission, FolderSync, appendFile } from './folder.js';
 import { rampPlan, ftp20Plan, testResult, RampWatcher, round5 } from './ftptest.js';
 import { rideFromSession, addRide, loadHistory, summary } from './history.js';
 import { toBlocks } from './creator.js';
@@ -64,8 +65,8 @@ const realSource = () => { const now = performance.now(), r = A.real; return r.c
 const quiet = () => A.speed > 5;           // a ×20/×60 niente suoni né messaggi
 
 /* ---------- utilità UI ---------- */
-function logEv(m) { A.log.unshift(fmt(A.session ? A.session.t : 0) + '  ' + m); A.log = A.log.slice(0, 6); $('log').innerHTML = A.log.map(x => '<div>' + esc(x) + '</div>').join(''); }
-let toastT; function toast(m) { const t = $('toast'); t.textContent = m; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 3200); }
+function logEv(m) { D.log('ui.log', { m }); A.log.unshift(fmt(A.session ? A.session.t : 0) + '  ' + m); A.log = A.log.slice(0, 6); $('log').innerHTML = A.log.map(x => '<div>' + esc(x) + '</div>').join(''); }
+let toastT; function toast(m) { D.log('ui.toast', { m }); const t = $('toast'); t.textContent = m; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 3200); }
 let coachT; function showCoach(text, tone = 'info') {
   if (quiet() || !S.coachMsgs) return;
   const c = $('coach'); c.textContent = text; c.className = 'coach show ' + tone; clearTimeout(coachT); coachT = setTimeout(() => c.classList.remove('show'), 6000);
@@ -75,7 +76,7 @@ const coach = new Coach(showCoach);
 let wake = null, wantWake = false;
 async function keepAwake(on) {
   wantWake = on;
-  try { if (wake) { const w0 = wake; wake = null; await w0.release(); } if (on && navigator.wakeLock) { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => { if (wake) wake = null; }); } } catch { /* non supportato */ }
+  try { if (wake) { const w0 = wake; wake = null; await w0.release(); } if (on && navigator.wakeLock) { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => { D.log('wake', { released: true }); if (wake) wake = null; }); } D.log('wake', { want: on, got: !!wake }); } catch (e) { D.log('wake', { want: on, err: String(e && e.message) }); /* non supportato */ }
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && wantWake && !wake) keepAwake(true); });
 const ZONES = [[55, '#8a8aa0'], [76, '#4bc4ff'], [91, '#4be37a'], [106, '#ffd24a'], [121, '#ff9a3a'], [151, '#ff4d6d'], [999, '#c06aff']];
@@ -107,6 +108,7 @@ function loadPlanText(text, persist = true, internal = false) {
   if (!internal && busyRide()) { A.pending = { plan: text, persist }; toast('Seduta in corso: il nuovo piano si applica quando esci'); return false; }
   const r = parsePlan(mergeCloud(text));
   showWarnings(r);
+  D.log('plan.load', { bytes: text.length, ok: r.ok, sessions: r.sessions.length, ftp: r.ftp, errors: r.errors.slice(0, 3), warnings: r.warnings.length, persist, internal });
   if (!r.ok && !r.sessions.length) { toast('Piano non valido'); return false; }
   if (!internal) A.rawPlan = text;
   A.plan = r; A.ftp = r.ftp;
@@ -122,6 +124,7 @@ function loadPlanText(text, persist = true, internal = false) {
 const newSession = (plan, ftp, extra = {}) => new Session(plan, ftp, { autoPauseSec: S.autoPause ? 5 : 1e9, ...extra });
 function setSession(sess, p) {
   A.session = sess; G.setProfile(p, A.ftp, speedFor);
+  D.log('session.new', { id: p.id, title: p.title, type: p.type, steps: p.steps.length, total: p.total, ftp: A.ftp, mode: A.mode });
   A.gain = 0; A.log = []; $('log').innerHTML = ''; A.doneShown = false; A.pg = []; coach.reset();
   syncTrainerFtp();
 }
@@ -157,6 +160,7 @@ async function applyRoute(id, silent) {
     if (id.startsWith('gpx:')) { const r = A.imported.find(x => 'gpx:' + x.id === id); if (r) route = new Route(r); }
     else if (id !== 'auto') { const meta = A.routes.find(r => r.id === id); if (meta) route = new Route(await (await fetch(meta.file)).json()); }
     A.route = route; G.setRoute(route); if (w3 && w3.ok) w3.setRoute(route); A.lastPlace = '';
+    D.log('route', { id, name: route ? route.name : null, km: route ? D.round(route.len / 1000, 2) : null, gain: route ? route.gain : null, loop: route ? route.loop : null });
     A.startDist = (route && S.lastPick.route === id && route.places.some(p => p.d === S.lastPick.start)) ? S.lastPick.start : 0;
     const ss = $('startSel'); const seenP = new Set();
     ss.innerHTML = route ? route.places.filter(p => !seenP.has(p.n) && seenP.add(p.n)).map(p => `<option value="${p.d}">${esc(p.n)} · km ${(p.d / 1000).toFixed(1)}</option>`).join('') : '';
@@ -171,6 +175,7 @@ async function importGpx(file) {
   try {
     if (file.size > 10e6) throw new Error('file troppo grande (max 10 MB)');
     const route = routeFromFile(await file.text(), file.name), j = route.toJSON();
+    D.log('gpx.import', { file: file.name, bytes: file.size, km: D.round(route.len / 1000, 2), gain: route.gain });
     if (route.len < 500) throw new Error('Percorso più corto di 500 m');
     A.imported = A.imported.filter(r => r.id !== j.id); A.imported.push(j); if (A.imported.length > 6) A.imported.shift();
     if (!store.set('ciclomulino.gpx', JSON.stringify(A.imported))) toast('Percorso non salvabile nel browser (spazio pieno): resta valido finché non chiudi');
@@ -183,8 +188,10 @@ async function importGpx(file) {
 const RUN_KEY = 'ciclomulino.run';
 function saveRun() {
   const s = A.session; if (!s || !s.started || A.mode === 'keys' || !s.records.length) return;
-  store.set(RUN_KEY, JSON.stringify({ sessId: s.plan.id, plan: s.plan, mode: A.mode, ftp: A.ftp, startDist: A.startDist, routeId: store.get('ciclomulino.route') || 'auto', done: s.done, reason: s.doneReason, snap: s.snapshot() }));
+  const t0 = performance.now(), raw = JSON.stringify({ sessId: s.plan.id, plan: s.plan, mode: A.mode, ftp: A.ftp, startDist: A.startDist, routeId: store.get('ciclomulino.route') || 'auto', done: s.done, reason: s.doneReason, snap: s.snapshot() });
+  const ok = store.set(RUN_KEY, raw);
   A.lastSave = performance.now();
+  D.log('save.run', { bytes: raw.length, ok, ms: D.round(A.lastSave - t0, 1), rec: s.records.length });     // il salvataggio anti-crash cresce con la seduta: qui si vede quanto costa
 }
 function checkRecovery() {
   const raw = store.get(RUN_KEY); if (!raw) return;
@@ -234,7 +241,8 @@ function devState(btn, kind) {
 function bindTrainer(t) {
   A.trainer = t;
   const st = devState('btnTrainer', 'trainer');
-  t.onState = (x, m) => { if (x === 'lost' || x === 'off') { A.inp.power = 0; A.inp.cad = 0; A.wheel.reset(); A.real.csc = null; A.real.ftms = null; } if (x === 'on') A.simGrade = null; st(x, m); };
+  t.trace = D.tracer('trainer'); t.debug = !!S.debug; D.log('dev.bind', { who: 'trainer', kind: t.kind });
+  t.onState = (x, m) => { D.log('dev.state', { who: 'trainer', s: x, m: m || null }); if (x === 'lost' || x === 'off') { A.inp.power = 0; A.inp.cad = 0; A.wheel.reset(); A.real.csc = null; A.real.ftms = null; } if (x === 'on') A.simGrade = null; st(x, m); };
   t.onData = d => { const now = performance.now(); if (d.csc) { const k = A.wheel.push(d.csc.wheelRevs, d.csc.wheelTime, S.wheelMm / 1000, now); if (k != null) { A.real.csc = k; A.real.cscAt = now; } } if (d.speed != null && d.speed >= 0 && d.speed < 120) { A.real.ftms = d.speed; A.real.ftmsAt = now; }
     if (d.power != null) A.inp.power = Math.min(3000, Math.max(0, d.power)); if (d.cadence != null) A.inp.cad = Math.min(250, Math.max(0, d.cadence)); if (d.hr && d.hr >= 30 && d.hr <= 250) A.inp.hr = d.hr; A.inp.lastData = performance.now(); };
   t.onError = m => { logEv('Trainer: ' + m); };
@@ -245,8 +253,8 @@ async function connectTrainer() {
   if (A.sim) return;
   if (!bleAvailable()) { toast('Web Bluetooth non disponibile: usa Edge o Chrome su localhost/https'); return; }
   if (A.trainer) { A.trainer.wantConnected = false; try { await A.trainer.disconnect(); } catch { /* ignora */ } A.trainer = null; }
-  try { const t = new BleTrainer(); bindTrainer(t); syncTrainerFtp(); await t.connect(); logEv('Connesso: ' + t.name + ' (FTMS)'); }
-  catch (e) { A.trainer = null; $('btnTrainer').className = 'conn off'; $('btnTrainer').textContent = lbl.trainer; if (e.name !== 'NotFoundError') toast('Trainer: ' + e.message); }
+  try { D.log('ui.connect', { who: 'trainer' }); const t = new BleTrainer(); bindTrainer(t); syncTrainerFtp(); await t.connect(); logEv('Connesso: ' + t.name + ' (FTMS)'); }
+  catch (e) { D.log('ble.connect.fail', { who: 'trainer', name: e.name, m: e.message, step: A.trainer && A.trainer.step }); A.trainer = null; $('btnTrainer').className = 'conn off'; $('btnTrainer').textContent = lbl.trainer; if (e.name !== 'NotFoundError') toast('Trainer: ' + e.message); }
 }
 async function connectHr() {
   Au.unlock();
@@ -254,11 +262,11 @@ async function connectHr() {
   if (A.sim) return;
   if (!bleAvailable()) { toast('Web Bluetooth non disponibile'); return; }
   if (A.hrDev) { A.hrDev.wantConnected = false; try { await A.hrDev.disconnect(); } catch { /* ignora */ } A.hrDev = null; }
-  try { const h = new BleHr(); A.hrDev = h; h.onState = devState('btnHr', 'hr'); h.onData = bpm => { A.inp.hr = bpm; }; await h.connect(); logEv('Connesso FC: ' + h.name); }
-  catch (e) { A.hrDev = null; $('btnHr').className = 'conn off'; $('btnHr').textContent = lbl.hr; if (e.name !== 'NotFoundError') toast('FC: ' + e.message); }
+  try { D.log('ui.connect', { who: 'hr' }); const h = new BleHr(); A.hrDev = h; h.trace = D.tracer('hr'); h.debug = !!S.debug; const st = devState('btnHr', 'hr'); h.onState = (x, m) => { D.log('dev.state', { who: 'hr', s: x, m: m || null }); st(x, m); }; h.onData = bpm => { A.inp.hr = bpm; }; await h.connect(); logEv('Connesso FC: ' + h.name); }
+  catch (e) { D.log('ble.connect.fail', { who: 'hr', name: e.name, m: e.message, step: A.hrDev && A.hrDev.step }); A.hrDev = null; $('btnHr').className = 'conn off'; $('btnHr').textContent = lbl.hr; if (e.name !== 'NotFoundError') toast('FC: ' + e.message); }
 }
 async function toggleSim() {
-  Au.unlock();
+  Au.unlock(); D.log('sim', { to: !A.sim });
   if (A.sim) {
     if (A.mode === 'keys') stopKeys();
     A.sim = false; A.speed = 1; document.querySelectorAll('[data-sp]').forEach(x => x.classList.toggle('sel', x.dataset.sp === '1'));
@@ -309,12 +317,12 @@ function keysStep(dt) {
 /* ---------- gioco (modalità tastiera): 3 vite, checkpoint, game over. Gli allenamenti non hanno mai scontri. ---------- */
 const LIVES = 3, HIT_TXT = { car: 'Investito da un\'auto', bike: 'Scontro con un ciclista', tractor: 'Scontro con un trattore', works: 'Sei finito nei lavori in corso', pothole: 'Sei caduto in una buca' };
 function drawLives() { const el = $('lives'), g = A.game; el.hidden = !(A.mode === 'keys' && g); if (g) el.textContent = '♥'.repeat(g.lives) + '♡'.repeat(Math.max(0, LIVES - g.lives)); }
-function gameNew() { const V = G.V; A.game = { lives: LIVES, cp: V.dist, over: false, place: '' }; V.inv = 2; $('gameover').hidden = true; drawLives(); }
+function gameNew() { const V = G.V; A.game = { lives: LIVES, cp: V.dist, over: false, place: '' }; V.inv = 2; $('gameover').hidden = true; drawLives(); D.log('game.new', { dist: D.round(V.dist, 1) }); }
 function gameHit(what) {
   const g = A.game, s = A.session, V = G.V; if (!g || g.over || !s) return;
-  g.lives--; drawLives();
+  g.lives--; drawLives(); D.log('game.hit', { what, lives: g.lives, dist: D.round(V.dist, 1), cp: D.round(g.cp, 1), lat: D.round(V.lat, 2) });
   if (g.lives <= 0) {
-    g.over = true; A.keyPower = 0; s.pause('gameover');
+    g.over = true; A.keyPower = 0; s.pause('gameover'); D.log('game.over', { km: D.round(s.dist / 1000, 2), t: D.round(s.t, 1) });
     $('goKm').textContent = (Math.max(0, s.dist) / 1000).toFixed(2) + ' km'; $('goT').textContent = fmt(s.t); $('gameover').hidden = false; return;
   }
   const back = Math.max(0, V.dist - g.cp);                          // si riparte dall'ultimo checkpoint
@@ -326,7 +334,7 @@ function gameHit(what) {
 function gameTick() {
   const g = A.game, V = G.V; if (!g || g.over) return;
   const pl = A.route ? A.route.placeAt(V.dist) : null, nm = pl ? pl.n : '';
-  if (V.dist - g.cp >= 500 && ((nm && nm !== g.place) || V.dist - g.cp >= 2000)) { g.cp = V.dist; toast('✔ Checkpoint' + (nm ? ' · ' + nm : '')); }
+  if (V.dist - g.cp >= 500 && ((nm && nm !== g.place) || V.dist - g.cp >= 2000)) { g.cp = V.dist; D.log('game.checkpoint', { dist: D.round(V.dist, 1), place: nm }); toast('✔ Checkpoint' + (nm ? ' · ' + nm : '')); }
   g.place = nm;
 }
 function gameAgain() { const s = A.session, V = G.V; if (!s) return; s.dist = 0; s.stepDist = 0; V.dist = A.startDist; V.lat = V.latT = V.rest; V.jump = 0; V.jumpT = -1; A.keyPower = 0; s.resume(); gameNew(); }
@@ -356,18 +364,28 @@ function resetSession() {
   s.reset(); A.gain = 0; A.log = []; A.pg = []; $('log').innerHTML = ''; $('done').hidden = true; A.doneShown = false; keepAwake(false); store.del(RUN_KEY); coach.reset();
 }
 const outputs = () => [A.folderSync, (A.od && A.od.signedIn ? A.cloud : null)].filter(Boolean);
-async function sendOut(name, fn) { let ok = 0; for (const o of outputs()) { try { await fn(o); ok++; } catch (e) { toast((o === A.folderSync ? 'Cartella' : 'OneDrive') + ': ' + e.message); } } return ok; }
+async function sendOut(name, fn) {
+  let ok = 0;
+  for (const o of outputs()) { const to = o === A.folderSync ? 'cartella' : 'onedrive'; try { await fn(o); ok++; D.log('out', { name, to, ok: true }); } catch (e) { D.log('out', { name, to, ok: false, err: e.message }); toast((o === A.folderSync ? 'Cartella' : 'OneDrive') + ': ' + e.message); } }
+  return ok;
+}
 async function finalizeRide(s) {
   if (!s.records.length || A.mode === 'keys') return;
-  const fitName = fitFileName(s, s.plan.title); let bytes = null; try { bytes = buildFit(s); } catch { /* nessun dato */ }
+  const fitName = fitFileName(s, s.plan.title); let bytes = null, fitErr = ''; try { bytes = buildFit(s); } catch (e) { fitErr = String(e && e.message); /* nessun dato */ }
+  D.log('fit.build', { name: fitName, bytes: bytes ? bytes.length : 0, hash: bytes ? D.hash32(bytes) : null, err: fitErr || null, records: s.records.length, laps: s.steps.length, dur: D.round(s.t, 1), km: D.round(s.dist / 1000, 3), avgW: Math.round(s.avgPower), maxW: s.maxP, avgHr: Math.round(s.avgHr), kj: Math.round(s.kj), reason: s.doneReason, mode: A.mode });
   addRide(shim, rideFromSession(s, { weight: S.weight, ftp: A.ftp, mode: A.mode, fitName }));
   const hist = JSON.stringify(loadHistory(shim));
-  if (S.autoFit && bytes && (await sendOut('fit', o => o.pushFit(fitName, bytes))) > 0) store.del(RUN_KEY);
-  if (A.folderSync) { try { await A.folderSync.pushHistory(hist); } catch (e) { toast('Cartella: ' + e.message); } }
+  D.log('ride.saved', { history: hist.length, rides: loadHistory(shim).length });
+  const nOut = S.autoFit && bytes ? await sendOut('fit', o => o.pushFit(fitName, bytes)) : -1;
+  D.log('fit.send', { auto: !!S.autoFit, outputs: outputs().length, ok: nOut });
+  if (nOut > 0) store.del(RUN_KEY);
+  if (A.folderSync) { try { await A.folderSync.pushHistory(hist); D.log('folder.history', { ok: true, bytes: hist.length }); } catch (e) { D.log('folder.history', { ok: false, err: e.message }); toast('Cartella: ' + e.message); } }
   queueStateSync(500);                                    // OneDrive: unisce lo storico con quello degli altri PC e lo carica
 }
 function showDone() {
   const s = A.session; A.doneShown = true; keepAwake(false); saveRun(); finalizeRide(s);
+  D.log('ride.done', { reason: s.doneReason, t: D.round(s.t, 1), km: D.round(s.dist / 1000, 3), avgW: Math.round(s.avgPower), np: D.round(A.cc.np, 0), kj: Math.round(s.kj), avgHr: Math.round(s.avgHr), mode: A.mode });
+  D.rec.flush(true);
   $('dTitle').textContent = A.mode === 'test' ? 'TEST FINITO' : s.doneReason === 'stopped' ? 'SEDUTA TERMINATA' : 'SEDUTA COMPLETATA';
   $('dDur').textContent = fmt(s.t); $('dP').textContent = Math.round(s.avgPower) + ' W';
   $('dHR').textContent = s.avgHr ? Math.round(s.avgHr) + ' bpm' : '—'; $('dKJ').textContent = Math.round(s.kj) + ' kJ';
@@ -384,7 +402,7 @@ function useTestFtp() {
 function downloadFit(sess) {
   const s = sess || A.session;
   try {
-    const bytes = buildFit(s); const blob = new Blob([bytes], { type: 'application/octet-stream' });
+    const bytes = buildFit(s); D.log('fit.download', { name: fitFileName(s, s.plan.title), bytes: bytes.length, hash: D.hash32(bytes) }); const blob = new Blob([bytes], { type: 'application/octet-stream' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = fitFileName(s, s.plan.title);
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
     toast('File .FIT scaricato (' + Math.round(bytes.length / 1024) + ' kB)');
@@ -422,6 +440,8 @@ const GAMEKEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'Ke
 addEventListener('keydown', e => {
   if (['SELECT', 'INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
   Au.unlock();
+  if (e.code === 'KeyB' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) { dbgMark(); return; }
+  if (e.code === 'KeyI' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) { dbgPanelToggle(); return; }
   if (e.code === 'KeyF' && A.screen !== 'ride') { $('btnFull').click(); return; }
   if (A.screen !== 'ride') return;
   if ((A.mode === 'test' || A.mode === 'free') && (e.code === 'ArrowUp' || e.code === 'ArrowDown')) { e.preventDefault(); const d = e.code === 'ArrowUp' ? 5 : -5; if (A.mode === 'test') { if (A.session.adjust(d)) toast('Carico ' + (A.session.bias >= 0 ? '+' : '') + A.session.bias + ' W'); } else { A.freeTarget = Math.max(30, A.freeTarget + d); toast('Carico fisso ' + A.freeTarget + ' W'); } return; }
@@ -445,9 +465,9 @@ addEventListener('pagehide', saveRun);
 
 // errori imprevisti: non fermare mai il gioco, avvisare e basta
 let lastErr = 0;
-function onErr(msg) { console.error(msg); logEv('⚠ ' + msg); if (performance.now() - lastErr > 10000) { lastErr = performance.now(); toast('Errore: ' + msg + ' (la seduta continua)'); } }
-addEventListener('error', e => onErr(e.message || 'errore'));
-addEventListener('unhandledrejection', e => onErr((e.reason && e.reason.message) || String(e.reason)));
+function onErr(msg, fromWindow) { if (!fromWindow) D.log('app.error', { m: msg }); console.error(msg); logEv('⚠ ' + msg); if (performance.now() - lastErr > 10000) { lastErr = performance.now(); toast('Errore: ' + msg + ' (la seduta continua)'); } }
+addEventListener('error', e => onErr(e.message || 'errore', true));
+addEventListener('unhandledrejection', e => onErr((e.reason && e.reason.message) || String(e.reason), true));
 
 // trascina il file ovunque
 let dragN = 0;
@@ -457,8 +477,12 @@ addEventListener('dragover', e => e.preventDefault());
 addEventListener('drop', async e => { e.preventDefault(); dragN = 0; $('drop').hidden = true; const f = e.dataTransfer.files[0]; if (!f) return; if (/\.(gpx|tcx)$/i.test(f.name)) await importGpx(f); else loadPlanText(await f.text()); });
 
 /* ---------- eventi: seduta e mondo -> log, suoni, messaggi ---------- */
+const evData = e => { const { type, step, ...r } = e; if (typeof r.t === 'number') r.t = D.round(r.t, 2); if (step) r.step = { n: step.n, t: step.t, lo: step.lo, hi: step.hi, d: step.d, dist: step.dist, cad: step.cad || null, grade: step.grade ?? null }; return r; };
 function handleEvents(s) {
   for (const e of s.drain()) {
+    if (e.type === 'start') D.log('session.plan', { id: s.plan.id, title: s.plan.title, ftp: s.ftp, mode: A.mode, cfg: { stepRampSec: s.cfg.stepRampSec, lowRpm: s.cfg.lowRpm, lowSec: s.cfg.lowSec, highRpm: s.cfg.highRpm, highSec: s.cfg.highSec, reduced: s.cfg.reduced, rampSec: s.cfg.rampSec, minLoadW: s.cfg.minLoadW, autoPauseSec: s.cfg.autoPauseSec, noErg: !!s.cfg.noErg },
+      fmt: 'n,t,lo,hi,d,dist,cad,grade', steps: s.steps.map(x => [x.n, x.t, x.lo, x.hi, x.d ?? null, x.dist ?? null, x.cad || null, x.grade ?? null]) });
+    D.log('sess.' + e.type, evData(e));
     if (A.mode === 'plan') coach.onEvent(e, s);
     if (quiet()) { if (e.type === 'finish') showDone(); continue; }
     switch (e.type) {
@@ -473,6 +497,7 @@ function handleEvents(s) {
     }
   }
   for (const e of G.drainEvents()) {
+    { const { type, ...r } = e; D.log('world.' + type, r); }
     switch (e.type) {
       case 'honk': if (!quiet()) Au.horn(e.pan, e.variant); break;
       case 'pass': if (!quiet()) Au.passBy(e.pan); break;
@@ -664,6 +689,99 @@ function frameBody(now) {
   if (S.showFps) $('fpsBadge').textContent = 'FPS ' + A.fps + ' · ' + A.drawMs.toFixed(1) + ' ms';
 }
 
+/* ---------- debug: scatola nera, marcatori e pannello live (vedi js/debug.js) ---------- */
+let dbgPrev = null, dbgPanelOn = false, dbgPrevRx = { tr: 0, hr: 0 }, dbgRate = { tr: 0, hr: 0 }, dbgIdle = 0, dbgHooked = false, dbgFlushT = 0;
+function dbgStart() {
+  if (D.rec.on) return;
+  if (!D.rec.sinks.length) { D.rec.addSink(D.idbSink()); D.rec.addSink(D.folderSink(() => A.folderHandle, h => folderPermission(h, false), appendFile)); }
+  dbgPrev = D.settingsSnapshot(S);
+  D.rec.start({ build: BUILD, env: D.envInfo(window), settings: dbgPrev, ftp: A.ftp, screen: A.screen, gfx: { ok: !!(w3 && w3.ok), style: S.style } });
+  if (!dbgHooked) {
+    dbgHooked = true; D.installHooks(D.rec, window, document);
+    try { if (navigator.bluetooth) { navigator.bluetooth.getAvailability().then(v => D.log('ble.availability', { v })).catch(() => { /* ignora */ }); navigator.bluetooth.addEventListener('availabilitychanged', e => D.log('ble.availability', { v: e.value })); } } catch { /* ignora */ }
+    try { $('scene3d').addEventListener('webglcontextlost', () => D.log('webgl', { ev: 'lost' })); $('scene3d').addEventListener('webglcontextrestored', () => D.log('webgl', { ev: 'restored' })); } catch { /* ignora */ }
+  } else if (navigator.bluetooth) navigator.bluetooth.getAvailability().then(v => D.log('ble.availability', { v })).catch(() => { /* ignora */ });
+  clearInterval(dbgFlushT); dbgFlushT = setInterval(() => D.rec.flush(false), 3000);
+  dbgDot();
+}
+async function dbgStop(reason) { clearInterval(dbgFlushT); await D.rec.stop(reason || 'stop'); dbgDot(); }
+function dbgDot() { $('recDot').hidden = !D.rec.on; if (!D.rec.on) { $('dbg').hidden = true; dbgPanelOn = false; } }
+/** da chiamare quando cambiano le impostazioni: avvia o ferma la registrazione e annota cosa è cambiato */
+function dbgSync() {
+  if (S.debug && !D.rec.on) dbgStart();
+  else if (!S.debug && D.rec.on) { dbgStop('spento da impostazioni'); return; }
+  if (!D.rec.on) return;
+  const snap = D.settingsSnapshot(S), ch = dbgPrev ? D.diffSnapshot(dbgPrev, snap) : {};
+  if (Object.keys(ch).length) D.log('settings.change', ch);
+  dbgPrev = snap;
+}
+function dbgMark() {
+  if (!D.rec.on) { toast('Debug spento: si accende in Impostazioni → DEBUG'); return; }
+  const s = A.session; D.rec.marks++;
+  D.log('mark', { n: D.rec.marks, p: Math.round(A.inp.power), cad: Math.round(A.inp.cad), hr: A.inp.hr, tgt: s ? s.targetW : null, step: s ? s.idx : null, t: s ? D.round(s.t, 1) : null });
+  toast('📌 Punto ' + D.rec.marks + ' segnato nel log');
+}
+function dbgPanelToggle() {
+  if (!D.rec.on) { toast('Debug spento: si accende in Impostazioni → DEBUG'); return; }
+  dbgPanelOn = !dbgPanelOn; $('dbg').hidden = !dbgPanelOn; if (dbgPanelOn) dbgPanel();
+}
+const fmtB = n => (n > 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.round(n / 1e3) + ' kB');
+function dbgPanel() {
+  if (!dbgPanelOn) return;
+  const st = D.rec.stats(), s = A.session, tr = A.trainer, hd = A.hrDev, i = A.inp, now = Date.now(), rk = realKmh();
+  const ago = t => (t ? ((now - t) / 1000).toFixed(1) + ' s fa' : 'mai');
+  const L = [`REC ${st.runId.slice(11, 17)} · ${st.lines} righe · ${fmtB(st.bytes)}${st.dropped ? ' · scartate ' + st.dropped : ''}`,
+    'salvato su: ' + (st.sinks.map(k => `${k.name} ${k.dead ? 'ERRORE' : k.err ? '(' + k.err + ')' : k.sent ? 'ok' : 'in attesa'}`).join(' · ') || 'solo memoria')];
+  if (tr) {
+    const b = tr.stats; L.push(`TRAINER ${tr.name || tr.kind} · ${tr.connected ? 'collegato' : 'NON collegato'}`);
+    if (b && tr.kind === 'ble') {
+      L.push(`  pacchetti ${b.rx} (${dbgRate.tr}/s) · ultimo ${ago(b.last)}`, `  per tipo: ${Object.entries(b.by).map(([k, v]) => k + '×' + v).join('  ') || '—'}`,
+        `  comandi ${b.wr} · errori ${b.wrErr} · uguali non inviati ${b.supp} · ultimo ${tr.lastW ?? '-'} W`,
+        `  giri ruota (CSC): ${tr.hasCsc ? 'sì' : 'no'} · range ${tr.range ? tr.range.min + '-' + tr.range.max + ' W' : '?'} · pendenza: ${tr.simUnsupported ? 'NON supportata' : 'ok'}`);
+    }
+  } else L.push('TRAINER: nessuno');
+  if (hd) L.push(`FC ${hd.name || hd.kind} · ${hd.connected ? 'collegata' : 'NON collegata'}${hd.stats && hd.kind === 'ble' ? ` · pacchetti ${hd.stats.rx} (${dbgRate.hr}/s) · ultimo ${ago(hd.stats.last)}` : ''}`);
+  L.push(`IN  ${Math.round(i.power)} W · ${Math.round(i.cad)} rpm · FC ${i.hr ?? '--'} · ${rk == null ? '--' : rk.toFixed(1)} km/h (${realSource()})`);
+  if (s) {
+    L.push(`ERG ${s.targetW} W = base ${Math.round(s.base)} × ${s.erg.L.toFixed(2)}${s.erg.reduced ? ' RIDOTTO' : ''} · cadenza bassa ${s.erg.lowT.toFixed(1)} s / alta ${s.erg.highT.toFixed(1)} s`,
+      `SEDUTA ${fmt(s.t)} · step ${s.idx + 1}/${s.steps.length} · ${s.paused ? 'PAUSA (' + s.pauseReason + ')' : s.done ? 'FINITA' : s.started ? 'in corso' : 'pronta'}`);
+  }
+  L.push(`APP ${A.fps} fps · disegno ${A.drawMs.toFixed(1)} ms · ${S.style} q${S.quality}${w3 && w3.ok ? '' : ' · 2D'}`, 'B = segna un punto · I = chiudi');
+  $('dbg').textContent = L.join('\n');
+}
+/** una riga di stato al secondo: tutto ciò che entra (watt, cadenza, FC, velocità), cosa decide l'ERG e cosa esce (watt richiesti, comandi) */
+function dbgTick() {
+  const s = A.session, tr = A.trainer, hd = A.hrDev, V = G.V, i = A.inp, pn = performance.now(), now = Date.now();
+  const d = { ts: now, scr: A.screen, mode: A.mode, sim: A.sim, x: A.speed, vis: document.visibilityState === 'visible' ? 1 : 0, fps: A.fps, ms: D.round(A.drawMs, 1), w3: !!(w3 && w3.ok) };
+  d.in = { p: Math.round(i.power), cad: D.round(i.cad, 1), hr: i.hr, age: i.lastData ? Math.round(pn - i.lastData) : null, kmh: D.round(realKmh(), 1), src: realSource(), csc: D.round(A.real.csc, 1), ftms: D.round(A.real.ftms, 1) };
+  if (tr) { const b = tr.stats; d.tr = { k: tr.kind, on: !!tr.connected, rx: dbgRate.tr, tot: b ? b.rx : null, last: b && b.last ? now - b.last : null, wr: b ? b.wr : null, wrErr: b ? b.wrErr : null, supp: b ? b.supp : null, lastW: tr.lastW, simUn: !!tr.simUnsupported, csc: !!tr.hasCsc }; }
+  if (hd) d.hr = { k: hd.kind, on: !!hd.connected, rx: dbgRate.hr, last: hd.stats && hd.stats.last ? now - hd.stats.last : null };
+  if (s) {
+    const e = s.erg;
+    d.s = { t: D.round(s.t, 2), i: s.idx, st: D.round(s.stepT, 2), dist: D.round(s.dist, 1), v: D.round(s.speed, 2), gr: D.round(s.grade, 2), on: s.started ? 1 : 0, pau: s.paused ? s.pauseReason : null, done: s.done ? s.doneReason : null,
+      tgt: s.targetW, base: D.round(s.base, 1), L: D.round(e.L, 3), Lt: e.Lt, red: e.reduced ? 1 : 0, lowT: D.round(e.lowT, 2), highT: D.round(e.highT, 2), bias: s.bias, a3: Math.round(s.avg3), aS: Math.round(s.avgStep), kj: D.round(s.kj, 1), rec: s.records.length };
+  }
+  d.g = { env: V.env, cam: V.cam, lat: D.round(V.lat, 2), slope: D.round(V.slope, 2), gain: D.round(A.gain, 1), game: A.game ? { lives: A.game.lives, over: A.game.over } : null };
+  if (performance.memory) d.heap = Math.round(performance.memory.usedJSHeapSize / 1e6);
+  D.log('tick', d);
+}
+function dbgSecond() {
+  try {
+    const tr = A.trainer, hd = A.hrDev, rxT = tr && tr.stats ? tr.stats.rx : 0, rxH = hd && hd.stats ? hd.stats.rx : 0;
+    dbgRate = { tr: Math.max(0, rxT - dbgPrevRx.tr), hr: Math.max(0, rxH - dbgPrevRx.hr) }; dbgPrevRx = { tr: rxT, hr: rxH };
+    if (!D.rec.on) return;
+    const s = A.session, busy = (s && s.started && !s.done) || (tr && tr.connected) || A.screen === 'ride';
+    if (!busy && ++dbgIdle % 30) return;                // a riposo (niente seduta, niente collegato) basta una riga ogni 30 s
+    dbgTick();
+  } catch { /* il debug non disturba mai */ }
+}
+setInterval(dbgSecond, 1000); setInterval(() => { try { dbgPanel(); } catch { /* ignora */ } }, 400);
+async function dbgDownload() {
+  if (!D.rec.lines.length) { toast('Nessun log da scaricare (debug spento?)'); return; }
+  await D.rec.flush(true);
+  download('open-trainer-debug-' + D.rec.runId + '.jsonl', D.rec.text(), 'application/x-ndjson'); toast('Log scaricato (' + fmtB(D.rec.bytes) + ')');
+}
+
 /* ---------- OneDrive ---------- */
 const clientId = () => MS_CLIENT_ID || S.clientId;
 function cloudUi() {
@@ -706,17 +824,18 @@ async function runStateSync(manual, pulled = { plan: false, workouts: 0 }) {
       validateRoute: j => { new Route(j); }
     });
     const r = await sy.run();
+    D.log('sync.state', { ...r, pulled });
     const news = [pulled.plan ? 'piano' : '', pulled.workouts ? 'workout' : '', r.settings === 'scaricate' ? 'impostazioni' : '', r.rides ? 'storico' : '', r.routes ? 'percorsi' : ''].filter(Boolean);
     $('cloudStatus').textContent = news.length ? 'OneDrive: aggiornato (' + news.join(', ') + ')' : 'OneDrive: già aggiornato';
     if (manual || r.settings === 'scaricate') toast(news.length ? 'OneDrive: aggiornato (' + news.join(', ') + ')' : 'OneDrive: nessuna novità');
-  } catch (e) { $('cloudStatus').textContent = 'OneDrive: ' + e.message; if (manual) toast('OneDrive: ' + e.message); }
+  } catch (e) { D.log('sync.state', { err: e.message }); $('cloudStatus').textContent = 'OneDrive: ' + e.message; if (manual) toast('OneDrive: ' + e.message); }
   finally { syncBusy = false; }
 }
 async function syncNow(manual) {
-  if (A.folderSync) { try { await A.folderSync.pull(manual); if (manual) toast('Cartella: controllata'); } catch (e) { $('folderStatus').textContent = 'Cartella: ' + e.message; if (manual) toast('Cartella: ' + e.message); } }
+  if (A.folderSync) { try { const pr = await A.folderSync.pull(manual); D.log('sync.folder', pr); if (manual) toast('Cartella: controllata'); } catch (e) { D.log('sync.folder', { err: e.message }); $('folderStatus').textContent = 'Cartella: ' + e.message; if (manual) toast('Cartella: ' + e.message); } }
   if (!A.od || !A.od.signedIn) return;
-  try { await A.cloud.flushQueue(); const r = await A.cloud.pull(manual); await runStateSync(manual, r); }
-  catch (e) { $('cloudStatus').textContent = 'OneDrive: ' + e.message; if (manual) toast('OneDrive: ' + e.message); if (e.status === 401 || /Microsoft:/.test(e.message)) cloudUi(); }
+  try { await A.cloud.flushQueue(); const r = await A.cloud.pull(manual); D.log('sync.cloud', r); await runStateSync(manual, r); }
+  catch (e) { D.log('sync.cloud', { err: e.message, status: e.status || null }); $('cloudStatus').textContent = 'OneDrive: ' + e.message; if (manual) toast('OneDrive: ' + e.message); if (e.status === 401 || /Microsoft:/.test(e.message)) cloudUi(); }
 }
 $('btnMsLogin').onclick = msLogin;
 $('btnMsSync').onclick = () => syncNow(true);
@@ -786,6 +905,7 @@ function applySettings() {
   Au.setOn(S.sound); Au.setVolume(S.vol); Au.AUDIO.ambient = S.ambient; $('vol').value = S.vol; $('btnSound').textContent = S.sound ? '🔊 SUONI: ON' : '🔇 SUONI: OFF';
   G.setQuality(S.quality); applyStyle(); if (A.session) A.session.cfg.autoPauseSec = S.autoPause ? 5 : 1e9;
   $('fpsBadge').hidden = !S.showFps;
+  try { dbgSync(); } catch (e) { console.error('debug: ' + e.message); }          // il debug non deve mai fermare l'app
 }
 
 /* ---------- avvio di una seduta dalle schermate ---------- */
@@ -866,7 +986,10 @@ const api = {
   A, S, saveS, toast, applySettings, startTutorial, openWizard, ftp: refFtp, planFtp, ftpSource,
   realSource, ccPages: () => parsePages(S.ccPages), ccFields: () => FIELD_IDS.map(id => [id, FIELDS[id].name]),
   ccSet: pages => { S.ccPages = pages ? serializePages(pages) : DEFAULT_PAGES; saveS(); A.ccPage = 0; A.ccSig = ''; },
-  onScreen: n => { A.screen = n; document.body.dataset.screen = n; },
+  onScreen: n => { if (A.screen !== n) D.log('screen', { n, from: A.screen }); A.screen = n; document.body.dataset.screen = n; },
+  dbgStats: () => D.rec.stats(), dbgDownload, dbgMark, dbgPanel: dbgPanelToggle, dbgRuns: () => D.idbRuns(), dbgNote: t => { D.log('note', { text: String(t || '').slice(0, 500) }); toast('Nota aggiunta al log'); },
+  dbgRun: async id => { const text = await D.idbRead(id); if (!text) { toast('Log vuoto o non trovato'); return; } download('open-trainer-debug-' + id + '.jsonl', text, 'application/x-ndjson'); },
+  dbgClear: async () => { const n = await D.idbClear(); toast(n + ' log cancellati dal browser'); return n; },
   bikes: () => G.BIKES.map(b => ({ id: b.id, name: b.name })), patterns: () => G.PATTERNS, emblems: () => G.EMBLEMS, previewRider: c => G.previewRider(c),
   routes: () => A.routes, currentRoute: () => (A.route ? A.route.id : 'auto'), applyRoute: id => applyRoute(id, true),
   places: () => { if (!A.route) return []; const seen = new Set(); return A.route.places.filter(p => !seen.has(p.n) && seen.add(p.n)); },

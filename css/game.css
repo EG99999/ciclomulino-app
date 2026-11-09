@@ -126,3 +126,7 @@ button:focus-visible,select:focus-visible,.btn:focus-within{outline:3px solid va
 .cc .pg{display:flex;justify-content:center;gap:5px;margin-top:5px} .cc .pg s{display:block;width:14px;height:5px;background:#0d0a22;border:1px solid var(--line);text-decoration:none} .cc .pg s.on{background:var(--acc)}
 .cc.up{bottom:134px}
 @media(max-width:760px){.cc{bottom:150px}.cc.up{bottom:150px}}
+/* debug: puntino di registrazione e pannello live (tasto I) */
+.recdot{position:absolute;left:8px;top:24px;z-index:7;font-family:var(--px);font-size:7px;color:#ff4d6d;background:rgba(10,8,28,.7);padding:3px 6px;pointer-events:none}
+.recdot[hidden],.dbgp[hidden]{display:none}
+.dbgp{position:absolute;left:8px;top:44px;z-index:8;margin:0;max-width:min(440px,94vw);max-height:70vh;overflow:hidden;background:rgba(6,6,18,.88);border:2px solid var(--line);padding:6px 8px;font-family:Consolas,"Courier New",monospace;font-size:12px;line-height:1.35;color:#d8d6f0;white-space:pre-wrap;pointer-events:none}

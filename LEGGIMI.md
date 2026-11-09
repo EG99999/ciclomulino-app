@@ -53,6 +53,20 @@ Non provato: Bluetooth vero (anche i comandi di pendenza FTMS sul Suito-T), acce
 - Primo avvio: «Benvenuto su Open Trainer»; tolte le frasi lampeggianti dal titolo.
 Non provato: Bluetooth vero (giri ruota/CSC e velocità del Suito-T), sincronizzazione con due account/PC veri (provata solo con un OneDrive finto nei test), ripiego Pixel 2D con le nuove regole del traffico (la logica è la stessa del 3D ed è coperta dai test).
 
+## Modalità debug / scatola nera (9 nov 2026)
+Impostazioni → **DEBUG** (acceso di serie finché si prova l'app). Registra **ogni dato che entra e che esce**, una riga per evento (file `.jsonl`), solo sul tuo PC, senza inviare niente a nessuno:
+- **Entrata**: ogni pacchetto Bluetooth grezzo (byte in esadecimale + valori letti) di trainer (potenza, cadenza, velocità, stato, risposte ai comandi) e FC; giri ruota se il trainer li manda; tasti e clic (mai il contenuto dei campi di testo); rete (solo indirizzo senza parametri, esito, tempo); piano/GPX importati; sincronizzazioni.
+- **Uscita**: ogni comando al trainer (decisione, byte, esito, tempo) e quelli volutamente non inviati; cosa decide l'ERG; file .FIT (nome, byte, impronta, giri); salvataggi; scritture in cartella/OneDrive.
+- **Stato ogni secondo**: watt, cadenza, FC, km/h reali, carico richiesto, fattore ERG, timer della cadenza bassa/alta, step, pausa, FPS, tempo di disegno, memoria.
+- **Dispositivo**: al primo collegamento elenca servizi e caratteristiche Bluetooth, le funzioni supportate dal trainer (FTMS Feature), produttore/modello/firmware, batteria.
+- **Errori e prestazioni**: errori, console, blocchi > 100 ms, 3D perso, divieti della politica di sicurezza, GPU.
+- Non entrano mai nel log: token, codici di accesso, parametri degli indirizzi, nome, Client ID.
+
+Dove finisce: nel browser (ultimi log, recuperabili da Impostazioni → DEBUG) **e**, se hai collegato la cartella dati, in `debug/ot-<data>.jsonl` (aggiornato ogni 30 s e a fine seduta). Da Impostazioni → DEBUG puoi anche scaricarlo a mano, aggiungere una nota o cancellare i log.
+In gara: **B** segna un punto nel log (con watt, cadenza, step in quel momento) · **I** apre il pannello live (pacchetti al secondo, ultimo comando, ERG, FPS). Il puntino rosso «REC» in alto a sinistra dice che sta registrando.
+Trovato con questa revisione (c'era dall'inizio, mai visto perché il trainer finto dei test era troppo permissivo): il Control Point usava `startIndications()`, che nel Web Bluetooth non esiste → con un trainer vero il collegamento sarebbe fallito sempre. Ora usa `startNotifications()` (che attiva anche le indicazioni) e il trainer finto dei test non ha più `startIndications`.
+Per spegnerlo: Impostazioni → DEBUG. Codice: `js/debug.js` (registratore), tracce Bluetooth in `js/ble.js`, ganci in `js/main.js`; prove in `test/debug.test.js`. Prima del rilascio al pubblico si cambia il valore di serie (`debug: false` in `js/settings.js`).
+
 ## Sicurezza (8 nov 2026)
 Revisione completa del codice (lettura indipendente + prove) e correzioni. Cosa protegge l'app:
 - **File importati non fidati** (impostazioni, piano, workout, GPX/TCX): ogni valore è controllato per tipo e intervallo prima di essere usato o mostrato; testi e colori non conformi vengono scartati. Un file malevolo non può eseguire codice, bloccare il browser (ripetizioni enormi, tracce con milioni di punti) né mandare watt assurdi al trainer (tetto 2000 W e 4×FTP; il trainer riceve sempre valori dentro limiti sicuri).

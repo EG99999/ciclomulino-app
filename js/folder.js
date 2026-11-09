@@ -31,6 +31,14 @@ export async function writeFile(h, path, data) {
   await w.write(data); await w.close();
 }
 
+/** Aggiunge testo in fondo a un file (lo crea se manca). fresh = ricomincia il file da capo. Serve al registratore di debug. */
+export async function appendFile(h, path, text, fresh) {
+  const [dirs, name] = split(path), d = await dirOf(h, dirs, true), fh = await d.getFileHandle(name, { create: true });
+  let size = 0; if (!fresh) { try { size = (await fh.getFile()).size; } catch { size = 0; } }
+  const w = await fh.createWritable({ keepExistingData: !fresh });
+  try { if (!fresh) await w.seek(size); await w.write(text); await w.close(); } catch (e) { try { await w.abort(); } catch { /* ignora */ } throw e; }
+}
+
 /** Stessa interfaccia di CloudSync: piano e workout IN, .FIT/storico/test OUT. */
 export class FolderSync {
   constructor(handle, { storage, onPlan, onWorkouts, status = () => {} }) { Object.assign(this, { handle, storage, onPlan, onWorkouts, status }); }

@@ -11,6 +11,7 @@ export const DEFAULTS = {
   bikeColor: { frame: '', accent: '', deep: -1 },                      // vuoto = colori originali della bici scelta
   kit: { jersey: '#ff7a1a', jersey2: '#ffd070', pattern: 'zip', shorts: '#1a1a28', helmet: '#f4f1ff', skin: '#f0b890', emblem: '', emblemColor: '#ffffff', text: '', img: null },
   style: 'voxel', traffic: true, hazards: true, gestures: true, coachMsgs: true, autoPause: true, ambient: true, showFps: false, quality: 3,
+  debug: true,                // scatola nera: registra ogni dato in entrata e in uscita (file .jsonl sul PC). Acceso durante la fase di prova.
   lastPick: { kind: 'plan', sessId: '', route: '', start: 0 }, folder: false
 };
 /* Validazione a whitelist: ogni valore (da localStorage o da un file importato) è controllato per tipo e intervallo.
@@ -46,7 +47,7 @@ function walk(def, base, src, path) {
 /** `o` = oggetto letto da fuori (non fidato); `base` = valori da usare dove manca o non è valido */
 export function sanitizeSettings(o, base = DEFAULTS) { return walk(DEFAULTS, base, o && typeof o === 'object' && !Array.isArray(o) ? o : {}, ''); }
 /** impostazioni che restano proprie di ogni PC (collegamenti, grafica, volume, ultima scelta): non vengono sincronizzate */
-export const SYNC_SKIP = ['cloud', 'clientId', 'folder', 'planMode', 'autoSync', 'autoFit', 'wizStep', 'lastPick', 'showFps', 'quality', 'vol', 'sound'];
+export const SYNC_SKIP = ['cloud', 'clientId', 'folder', 'planMode', 'autoSync', 'autoFit', 'wizStep', 'lastPick', 'showFps', 'quality', 'vol', 'sound', 'debug'];
 /** ciò che va su OneDrive: tutte le impostazioni tranne quelle proprie del PC */
 export function settingsPayload(s) { const o = {}; for (const k of Object.keys(s)) if (!SYNC_SKIP.includes(k)) o[k] = s[k]; return o; }
 export function loadSettings(storage) {
