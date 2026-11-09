@@ -23,13 +23,26 @@ export function toBlocks(nodes) {
     return clean(b);
   });
 }
-export function fromBlocks(blocks) {
-  return blocks.map(b => {
-    if (Array.isArray(b.steps)) return { kind: 'rep', rep: b.rep || 1, steps: fromBlocks(b.steps) };
-    const s = newStep(b.t); s.n = b.n || s.n; if (b.dist) { s.by = 'dist'; s.dist = b.dist; } else s.d = b.d || s.d;
-    if (Array.isArray(b.pct)) { s.pw = 'pct'; s.pct = [...b.pct]; } else if (typeof b.lo === 'number') { s.pw = 'watt'; s.lo = b.lo; s.hi = b.hi; } else s.pw = b.t === 'rest' ? 'none' : 'pct';
-    s.cad = b.cad ? [...b.cad] : null; s.grade = b.grade ?? null; s.hrCap = b.hrCap ?? null; return s;
-  });
+const num = (v, d, lo, hi) => { v = typeof v === 'number' || (typeof v === 'string' && v.trim() !== '') ? +v : NaN; return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
+const text = (v, d) => (typeof v === 'string' && v.trim() ? v.replace(/[\u0000-\u001f]/g, '').slice(0, 60) : d);
+/** blocchi (da file non fidato) → modello del creatore: tipi, numeri e profondità sono controllati e limitati */
+export function fromBlocks(blocks, depth = 0, budget = { n: 0 }) {
+  if (!Array.isArray(blocks) || depth > 4) return [];
+  const out = [];
+  for (const b of blocks) {
+    if (!b || typeof b !== 'object' || ++budget.n > 500) continue;
+    if (Array.isArray(b.steps)) { out.push({ kind: 'rep', rep: Math.round(num(b.rep, 1, 1, 50)), steps: fromBlocks(b.steps, depth + 1, budget) }); continue; }
+    const t = TYPES.some(x => x[0] === b.t) ? b.t : 'interval';
+    const s = newStep(t); s.n = text(b.n, s.n);
+    if (b.dist) { s.by = 'dist'; s.dist = num(b.dist, 1000, 1, 1e6); } else s.d = num(b.d, s.d, 1, 86400);
+    if (Array.isArray(b.pct)) { s.pw = 'pct'; s.pct = [num(b.pct[0], 0.5, 0, 5), num(b.pct[1], 0.6, 0, 5)]; }
+    else if (typeof b.lo === 'number') { s.pw = 'watt'; s.lo = num(b.lo, 100, 0, 2000); s.hi = num(b.hi, s.lo, 0, 2000); }
+    else s.pw = t === 'rest' ? 'none' : 'pct';
+    s.cad = Array.isArray(b.cad) && b.cad.length === 2 ? [num(b.cad[0], 0, 0, 250), num(b.cad[1], 0, 0, 250)] : null;
+    s.grade = b.grade == null ? null : num(b.grade, null, -30, 30); s.hrCap = b.hrCap == null ? null : num(b.hrCap, null, 0, 250);
+    out.push(s);
+  }
+  return out;
 }
 export function toSession({ id, title, type, notes, nodes }) {
   return { id: id || 'mio-' + Date.now().toString(36), date: null, time: null, title: title || 'Il mio workout', type: type || title || 'Workout', notes: notes || '', blocks: toBlocks(nodes), mine: true };

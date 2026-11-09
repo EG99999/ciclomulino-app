@@ -1,0 +1,15 @@
+piano-app.json
+test/out.fit
+node_modules/
+# dati personali e file di lavoro: mai pubblici
+workouts/
+storico.json
+ftp-test.json
+*.fit
+CLAUDE.md
+SPEC.md
+.claude/
+.env
+.env.*
+*.pem
+*.pfx

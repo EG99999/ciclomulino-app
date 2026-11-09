@@ -27,7 +27,7 @@ export class OneDrive {
   async loginUrl() {
     if (!this.clientId) throw new Error('Manca il Client ID Microsoft (vedi GUIDA-ONEDRIVE.md)');
     const verifier = randomString(64), state = randomString(24);
-    this.session.setItem(PKCE_KEY, JSON.stringify({ verifier, state }));
+    this.session.setItem(PKCE_KEY, JSON.stringify({ verifier, state, ts: this.now() }));
     const q = new URLSearchParams({ client_id: this.clientId, response_type: 'code', redirect_uri: this.redirectUri, response_mode: 'query', scope: SCOPES, state, code_challenge: await pkceChallenge(verifier), code_challenge_method: 'S256', prompt: 'select_account' });
     return `${AUTH}/authorize?${q}`;
   }
@@ -37,8 +37,9 @@ export class OneDrive {
     if (!code && !err) return null;
     let saved = null; try { saved = JSON.parse(this.session.getItem(PKCE_KEY) || 'null'); } catch { /* ignora */ }
     this.session.removeItem(PKCE_KEY);
-    if (err) return 'errore:' + (u.searchParams.get('error_description') || err).slice(0, 160);
+    if (err) return 'errore:' + String(u.searchParams.get('error_description') || err).replace(/[^\p{L}\p{N} .,:;()_'-]/gu, '').slice(0, 100);   // solo testo semplice: l'indirizzo può essere stato confezionato da altri
     if (!saved || saved.state !== u.searchParams.get('state')) return 'errore:risposta di accesso non valida (state diverso)';
+    if (saved.ts && this.now() - saved.ts > 600000) return 'errore:accesso scaduto (più di 10 minuti): riprova';
     await this._token({ grant_type: 'authorization_code', code, redirect_uri: this.redirectUri, code_verifier: saved.verifier, scope: SCOPES });
     try { const me = await this.api('/me?$select=displayName,userPrincipalName'); this.tok.account = me.displayName || me.userPrincipalName || ''; this._save(); } catch { /* il nome è solo estetico */ }
     return 'ok';
@@ -55,7 +56,7 @@ export class OneDrive {
     if (this.tok.access && this.now() < this.tok.exp) return this.tok.access;
     return this._token({ grant_type: 'refresh_token', refresh_token: this.tok.refresh, scope: SCOPES });
   }
-  logout() { this.tok = null; this._save(); try { this.storage.removeItem(ETAG_KEY); } catch { /* ignora */ } }
+  logout() { this.tok = null; this._save(); for (const k of [ETAG_KEY, QUEUE_KEY, PKCE_KEY]) { try { this.storage.removeItem(k); this.session.removeItem(k); } catch { /* ignora */ } } }
 
   /** chiamata a Graph (path relativo a /v1.0); riprova una volta se il token è scaduto */
   async api(path, { method = 'GET', body, headers = {}, raw = false, okStatuses = [] } = {}) {

@@ -9,7 +9,7 @@ import { Coach } from './coach.js';
 import * as Au from './audio.js';
 import * as G from './scene.js';
 import { Route, routeFromFile } from './route.js';
-import { loadSettings, saveSettings } from './settings.js';
+import { loadSettings, saveSettings, sanitizeSettings } from './settings.js';
 import { OneDrive, CloudSync } from './onedrive.js';
 import { MS_CLIENT_ID } from './config.js';
 import { runWizard, runTutorial } from './onboarding.js';
@@ -60,7 +60,7 @@ async function keepAwake(on) {
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && wantWake && !wake) keepAwake(true); });
 const ZONES = [[55, '#8a8aa0'], [76, '#4bc4ff'], [91, '#4be37a'], [106, '#ffd24a'], [121, '#ff9a3a'], [151, '#ff4d6d'], [999, '#c06aff']];
-const zoneCol = pct => ZONES.find(z => pct < z[0])[1];
+const zoneCol = pct => (ZONES.find(z => pct < z[0]) || ZONES[ZONES.length - 1])[1];
 
 /* ---------- piano ---------- */
 function showWarnings(r) {
@@ -150,6 +150,7 @@ async function applyRoute(id, silent) {
 }
 async function importGpx(file) {
   try {
+    if (file.size > 10e6) throw new Error('file troppo grande (max 10 MB)');
     const route = routeFromFile(await file.text(), file.name), j = route.toJSON();
     if (route.len < 500) throw new Error('Percorso più corto di 500 m');
     A.imported = A.imported.filter(r => r.id !== j.id); A.imported.push(j); if (A.imported.length > 6) A.imported.shift();
@@ -215,7 +216,7 @@ function bindTrainer(t) {
   A.trainer = t;
   const st = devState('btnTrainer', 'trainer');
   t.onState = (x, m) => { if (x === 'lost' || x === 'off') { A.inp.power = 0; A.inp.cad = 0; } if (x === 'on') A.simGrade = null; st(x, m); };
-  t.onData = d => { if (d.power != null) A.inp.power = Math.max(0, d.power); if (d.cadence != null) A.inp.cad = d.cadence; if (d.hr) A.inp.hr = d.hr; A.inp.lastData = performance.now(); };
+  t.onData = d => { if (d.power != null) A.inp.power = Math.min(3000, Math.max(0, d.power)); if (d.cadence != null) A.inp.cad = Math.min(250, Math.max(0, d.cadence)); if (d.hr && d.hr >= 30 && d.hr <= 250) A.inp.hr = d.hr; A.inp.lastData = performance.now(); };
   t.onError = m => { logEv('Trainer: ' + m); };
 }
 async function connectTrainer() {
@@ -558,6 +559,10 @@ setInterval(ui, 500); // aggiorna testi/banner anche se la scheda è in secondo 
 
 let lastDraw = performance.now(), uiAcc = 0, lastEnv = '', fpsN = 0, fpsT = 0, msAcc = 0, msN = 0;
 function frame(now) {
+  requestAnimationFrame(frame);                       // prima di tutto: se qualcosa sotto lancia un errore il disegno non si ferma
+  try { frameBody(now); } catch (e) { onErr('immagine: ' + e.message); }
+}
+function frameBody(now) {
   const real = Math.min((now - lastDraw) / 1000, 0.1); lastDraw = now;
   const s = A.session, V = G.V;
   V.time += real;
@@ -587,7 +592,6 @@ function frame(now) {
   fpsN++; fpsT += real; if (fpsT >= 1) { A.fps = Math.round(fpsN / fpsT); A.drawMs = msAcc / Math.max(1, msN); fpsN = 0; fpsT = 0; msAcc = 0; msN = 0; }
   uiAcc += real; if (uiAcc > 0.1) { uiAcc = 0; ui(); }
   if (S.showFps) $('fpsBadge').textContent = 'FPS ' + A.fps + ' · ' + A.drawMs.toFixed(1) + ' ms';
-  requestAnimationFrame(frame);
 }
 
 /* ---------- OneDrive ---------- */
@@ -632,8 +636,8 @@ $('chkAutoSync').onchange = e => { S.autoSync = e.target.checked; saveS(); }; $(
 $('msClient').onchange = e => { S.clientId = e.target.value.trim(); saveS(); };
 async function cloudStart() {
   makeCloud();
-  let res = null; try { res = await A.od.handleRedirect(location.href); } catch (e) { res = 'errore:' + e.message; }
-  if (res) history.replaceState(null, '', location.pathname);
+  const href = location.href; if (/[?&](code|error|state)=/.test(location.search)) history.replaceState(null, '', location.pathname);   // il codice di accesso non resta nella barra
+  let res = null; try { res = await A.od.handleRedirect(href); } catch (e) { res = 'errore:' + e.message; }
   if (res === 'ok') { S.cloud = true; S.planMode = 'onedrive'; saveS(); toast('Collegato a OneDrive'); }
   else if (res) toast('Accesso Microsoft: ' + res.replace(/^errore:/, ''));
   cloudUi();
@@ -683,6 +687,7 @@ function applyStyle() {
   else { w3.setOn(false); $('scene').hidden = false; styleApplied = ''; }
 }
 function applySettings() {
+  coach.name = S.name || '';
   const V = G.V, b = S.bikeColor; V.kit = { ...S.kit };
   V.bikeC = (b.frame || b.accent || b.deep >= 0) ? { ...(b.frame ? { frame: b.frame } : {}), ...(b.accent ? { accent: b.accent } : {}), ...(b.deep >= 0 ? { deep: b.deep } : {}) } : null;
   const bk = G.setBike(S.bike); $('bikeName').textContent = bk.name; $('bikeSel').value = bk.id; store.set('ciclomulino.bike', bk.id);
@@ -785,18 +790,20 @@ const api = {
   getWorkout: id => A.mine.find(w => w.id === id), saveWorkout, deleteWorkout, drawPreview,
   exportWorkout: raw => download(raw.title.replace(/[^\w\- ]+/g, '_') + '.json', JSON.stringify(raw, null, 1), 'application/json'),
   history: () => loadHistory(shim), summary: d => summary(loadHistory(shim), d),
-  exportCsv: () => { const rows = loadHistory(shim); const head = 'data;seduta;durata_s;km;w_medi;np;w_kg;kj;fc_media\n'; download('open-trainer-storico.csv', head + rows.map(r => [new Date(r.when).toISOString().slice(0, 16).replace('T', ' '), '"' + r.title.replace(/"/g, '""') + '"', r.durS, r.km, r.avgP, r.np, r.wkg ?? '', r.kj, r.hr].join(';')).join('\n'), 'text/csv'); },
+  exportCsv: () => { const rows = loadHistory(shim); const head = 'data;seduta;durata_s;km;w_medi;np;w_kg;kj;fc_media\n'; download('open-trainer-storico.csv', head + rows.map(r => [new Date(r.when).toISOString().slice(0, 16).replace('T', ' '), '"' + csvSafe(r.title) + '"', r.durS, r.km, r.avgP, r.np, r.wkg ?? '', r.kj, r.hr].join(';')).join('\n'), 'text/csv'); },
   exportSettings: () => download('open-trainer-impostazioni.json', JSON.stringify({ ...S, clientId: '' }, null, 1), 'application/json'),
-  importSettings: async f => { try { const o = JSON.parse(await f.text()); Object.assign(S, o, { clientId: o.clientId || S.clientId, kit: { ...S.kit, ...(o.kit || {}) }, bikeColor: { ...S.bikeColor, ...(o.bikeColor || {}) }, lastPick: { ...S.lastPick, ...(o.lastPick || {}) } }); saveS(); applySettings(); toast('Impostazioni importate'); } catch (e) { toast('File non valido: ' + e.message); } },
-  wipe: () => { if (confirm('Cancellare impostazioni, storico, workout e piano salvati su questo computer? (I file nella cartella OneDrive non vengono toccati)')) { for (const k of Object.keys(localStorage)) if (k.startsWith('ciclomulino.')) localStorage.removeItem(k); location.reload(); } },
+  importSettings: async f => { try { if (f.size > 200000) throw new Error('file troppo grande'); const c = sanitizeSettings(JSON.parse(await f.text()), S); Object.assign(S, c, { clientId: c.clientId || S.clientId }); saveS(); applySettings(); toast('Impostazioni importate'); } catch (e) { toast('File non valido: ' + e.message); } },
+  wipe: async () => { if (confirm('Cancellare impostazioni, storico, workout, piano, accessi (Microsoft, cartella) e copie salvate su questo computer? (I file nella cartella OneDrive non vengono toccati)')) { for (const k of Object.keys(localStorage)) if (k.startsWith('ciclomulino.')) localStorage.removeItem(k); try { sessionStorage.clear(); } catch { /* ignora */ } try { await forgetFolder(); } catch { /* ignora */ } try { for (const k of await caches.keys()) await caches.delete(k); } catch { /* ignora */ } location.reload(); } },
   testSound: () => { Au.unlock(); Au.horn(0, 1); setTimeout(() => Au.chirp(0), 900); },
   cloudUi, folderUi
 };
+/** celle CSV che iniziano con = + - @ sarebbero formule in Excel: le rendo testo */
+function csvSafe(s) { s = String(s ?? ''); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return s.replace(/"/g, '""'); }
 function download(name, text, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
 scr = createScreens(api); scr.show('home');
 applySettings();
-ui();
+try { ui(); } catch (e) { onErr('schermata: ' + e.message); }
 requestAnimationFrame(frame);
 Au.setOn(S.sound); Au.setVolume(S.vol); $('vol').value = S.vol; $('btnSound').textContent = S.sound ? '🔊 SUONI: ON' : '🔇 SUONI: OFF';
-cloudStart().then(async () => { await folderStart(); if (!S.setupDone && $('recover').hidden) openWizard(); });
+cloudStart().catch(e => onErr('OneDrive: ' + e.message)).then(async () => { await folderStart(); if (!S.setupDone && $('recover').hidden) openWizard(); });
 let devSig = ''; setInterval(() => { if (scr && scr.cur === 'connect') { const sg = JSON.stringify(api.devices()); if (sg !== devSig) { devSig = sg; scr.refreshConnect(); } } else devSig = ''; }, 800);

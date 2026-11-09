@@ -43,7 +43,7 @@ export class Coach {
       case 'restore': this.say(pick(POOL.restore, this.rnd), 'good'); break;
       case 'pause': this.say(e.reason === 'auto' ? 'Ti sei fermato: pausa automatica. Riparti e riprendo.' : e.reason === 'trainer' ? 'Trainer scollegato: seduta in pausa.' : 'Pausa. Carico minimo.', 'info'); break;
       case 'resume': this.say('Si riparte! Rampa di 8 secondi.', 'good'); break;
-      case 'finish': this.say(e.reason === 'stopped' ? 'Seduta terminata. Scarica il .FIT.' : 'Seduta completata! Grande lavoro, Elia.', 'good'); break;
+      case 'finish': this.say(e.reason === 'stopped' ? 'Seduta terminata. Scarica il .FIT.' : 'Seduta completata! Grande lavoro' + (this.name ? ', ' + this.name : '') + '.', 'good'); break;
       case 'hit': this.say(pick(POOL.hit, this.rnd), 'warn'); break;
       case 'jump': this.say(pick(POOL.jump, this.rnd), 'good'); break;
     }

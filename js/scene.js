@@ -414,7 +414,7 @@ const shade = (hex, k) => { const c = new THREE_Color(hex); return '#' + [c.r, c
 function THREE_Color(hex) { const h = String(hex).replace('#', ''); const n = parseInt(h.length === 3 ? h.split('').map(x => x + x).join('') : h, 16) || 0; this.r = (n >> 16) & 255; this.g = (n >> 8) & 255; this.b = n & 255; }
 const imgCache = {};
 function kitImage(dataUrl) {            // immagine propria 10x10 → matrice di colori (cache)
-  if (!dataUrl) return null; if (imgCache[dataUrl]) return imgCache[dataUrl].px || null;
+  if (typeof dataUrl !== 'string' || !/^data:image\/png;base64,[A-Za-z0-9+\/=]{1,8000}$/.test(dataUrl)) return null; if (imgCache[dataUrl]) return imgCache[dataUrl].px || null;
   const im = new Image(); imgCache[dataUrl] = { px: null };
   im.onload = () => { const t = document.createElement('canvas'); t.width = t.height = 10; const g = t.getContext('2d'); g.drawImage(im, 0, 0, 10, 10); const d = g.getImageData(0, 0, 10, 10).data, px = []; for (let i = 0; i < 100; i++) px.push(d[i * 4 + 3] > 80 ? `rgb(${d[i * 4]},${d[i * 4 + 1]},${d[i * 4 + 2]})` : null); imgCache[dataUrl].px = px; };
   im.src = dataUrl; return null;
@@ -434,7 +434,7 @@ function paintPattern(r, cx, sw, top, h, pat, c2) {
 function paintEmblem(r, cx, sw, top, K) {
   const px = kitImage(K.img);
   if (px) { for (let i = 0; i < 100; i++) if (px[i]) r(cx - 5 + sw + (i % 10), top + 2 + Math.floor(i / 10), 1, 1, px[i]); return; }
-  const em = EMBLEMS[K.emblem], txt = (K.text || '').toUpperCase().slice(0, 3);
+  const em = Object.prototype.hasOwnProperty.call(EMBLEMS, K.emblem) ? EMBLEMS[K.emblem] : null, txt = String(K.text || '').toUpperCase().slice(0, 3);
   if (em) em.forEach((row, y) => { for (let xx = 0; xx < 7; xx++) if (row[xx] === '#') r(cx - 3 + sw + xx, top + 2 + y, 1, 1, K.emblemColor); });
   if (txt) { const w = txt.length * 4 - 1, ox = cx - Math.floor(w / 2) + sw, oy = top + (em ? 11 : 6); [...txt].forEach((ch, i) => { const g = FONT35[ch]; if (g) g.forEach((bits, y) => { for (let xx = 0; xx < 3; xx++) if (bits & (4 >> xx)) r(ox + i * 4 + xx, oy + y, 1, 1, K.emblemColor); }); }); }
 }

@@ -7,6 +7,10 @@ export const MIN_RANGE_W = 10;
 export const TYPES = ['warmup', 'interval', 'recovery', 'rest', 'cooldown'];
 
 const isNum = v => typeof v === 'number' && Number.isFinite(v);
+// Limiti di sicurezza: un file sbagliato (o malevolo) non deve bloccare il browser né mandare watt assurdi al trainer.
+export const LIMITS = { rep: 200, steps: 5000, ops: 100000, depth: 6, dur: 86400, dist: 1000000, maxW: 2000, ftpMul: 4, ftpMin: 50, ftpMax: 600, sessions: 200 };
+const str = (v, d, n = 80, nl = false) => (typeof v === 'string' && v.trim() ? v.replace(nl ? /[\u0000-\u0009\u000b-\u001f]/g : /[\u0000-\u001f]/g, '').slice(0, n) : d);
+const testMeta = t => (t && typeof t === 'object' ? { kind: t.kind === 'ramp' || t.kind === 'ftp20' ? t.kind : null, testStep: str(t.testStep, '', 60), start: isNum(t.start) ? t.start : 0, step: isNum(t.step) ? t.step : 0 } : null);
 
 /** Pendenza generata dal workout (CLAUDE.md), salvo `grade` forzata dal coach. */
 export function gradeOf(s, ftp) {
@@ -34,22 +38,27 @@ export function parsePlan(json) {
     return { ok: false, errors: ['Manca l\'elenco "sessions" nel file'], warnings, ftp: DEFAULT_FTP, sessions: [] };
   }
   let ftp = data.ftp;
-  if (!(isNum(ftp) && ftp > 0)) { warnings.push(`FTP non indicata nel file: uso ${DEFAULT_FTP} W`); ftp = DEFAULT_FTP; }
+  if (!(isNum(ftp) && ftp >= LIMITS.ftpMin && ftp <= LIMITS.ftpMax)) { warnings.push(`FTP non indicata nel file (o fuori da ${LIMITS.ftpMin}-${LIMITS.ftpMax} W): uso ${DEFAULT_FTP} W`); ftp = DEFAULT_FTP; }
 
   const sessions = [];
-  data.sessions.forEach((raw, si) => {
-    const label = raw && (raw.title || raw.id) || `seduta ${si + 1}`;
+  if (data.sessions.length > LIMITS.sessions) warnings.push(`Troppe sedute: leggo solo le prime ${LIMITS.sessions}`);
+  data.sessions.slice(0, LIMITS.sessions).forEach((raw, si) => {
+    const label = str(raw && (raw.title || raw.id), `seduta ${si + 1}`, 60);
     const sErr = [], sWarn = [];
     if (!raw || !Array.isArray(raw.blocks) || !raw.blocks.length) { errors.push(`${label}: nessun blocco`); return; }
-    const steps = [];
+    const steps = []; let ops = 0, over = '';
     const walk = (blocks, repStack, top, path) => {
+      if (repStack.length > LIMITS.depth) { over = over || 'ripetizioni annidate troppo in profondità'; return; }
       blocks.forEach((b, i) => {
+        if (over) return;
+        if (++ops > LIMITS.ops) { over = 'troppe ripetizioni'; return; }
+        if (steps.length >= LIMITS.steps) { over = `più di ${LIMITS.steps} step`; return; }
         const p = `${label} › ${path}${i + 1}`;
         const t = top == null ? i : top;
         if (b && Array.isArray(b.steps)) {
-          const n = Number.isInteger(b.rep) && b.rep > 0 ? b.rep : 0;
-          if (!n) { sErr.push(`${p}: "rep" deve essere un intero > 0`); return; }
-          for (let r = 1; r <= n; r++) walk(b.steps, [...repStack, { rep: r, reps: n }], t, `${path}${i + 1}.`);
+          const n = Number.isInteger(b.rep) && b.rep > 0 && b.rep <= LIMITS.rep ? b.rep : 0;
+          if (!n) { sErr.push(`${p}: "rep" deve essere un intero tra 1 e ${LIMITS.rep}`); return; }
+          for (let r = 1; r <= n && !over; r++) walk(b.steps, [...repStack, { rep: r, reps: n }], t, `${path}${i + 1}.`);
           return;
         }
         const s = normalizeStep(b, p, ftp, sErr, sWarn);
@@ -62,6 +71,7 @@ export function parsePlan(json) {
       });
     };
     walk(raw.blocks, [], null, '');
+    if (over) { errors.push(`${label}: ${over}: seduta ignorata`); return; }
     if (!steps.length) { errors.push(`${label}: nessuno step valido`); sErr.forEach(e => errors.push(e)); return; }
 
     // tempi (le durate a distanza sono stimate con la fisica)
@@ -76,9 +86,9 @@ export function parsePlan(json) {
     sErr.forEach(e => errors.push(e));
     sWarn.forEach(w => warnings.push(w));
     sessions.push({
-      id: raw.id || `s${si}`, date: raw.date || null, time: raw.time || null,
-      title: raw.title || raw.type || `Seduta ${si + 1}`, type: raw.type || raw.title || '',
-      notes: raw.notes || '', steps, total: acc, blocks: raw.blocks.length, test: raw.test || null, free: !!raw.free,
+      id: str(raw.id, `s${si}`, 60), date: typeof raw.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.date) ? raw.date : null, time: typeof raw.time === 'string' && /^\d{1,2}:\d{2}$/.test(raw.time) ? raw.time : null,
+      title: str(raw.title, str(raw.type, `Seduta ${si + 1}`, 60), 60), type: str(raw.type, str(raw.title, '', 60), 60),
+      notes: str(raw.notes, '', 600, true), steps, total: acc, blocks: raw.blocks.length, test: testMeta(raw.test), free: !!raw.free,
       warnings: sWarn
     });
   });
@@ -88,6 +98,7 @@ export function parsePlan(json) {
 function normalizeStep(b, p, ftp, errs, warns) {
   if (!b || typeof b !== 'object') { errs.push(`${p}: blocco non valido`); return null; }
   if (!TYPES.includes(b.t)) { errs.push(`${p}: tipo "${b.t}" sconosciuto (ammessi: ${TYPES.join(', ')})`); return null; }
+  if ((isNum(b.d) && b.d > LIMITS.dur) || (isNum(b.dist) && b.dist > LIMITS.dist)) { errs.push(`${p}: durata o distanza fuori limite (max ${LIMITS.dur / 3600} ore / ${LIMITS.dist / 1000} km)`); return null; }
   const hasD = isNum(b.d) && b.d > 0, hasDist = isNum(b.dist) && b.dist > 0;
   if (!hasD && !hasDist) { errs.push(`${p}: serve una durata "d" (secondi) o una distanza "dist" (metri)`); return null; }
   let lo, hi;
@@ -96,12 +107,14 @@ function normalizeStep(b, p, ftp, errs, warns) {
   else if (b.t === 'rest') { lo = hi = REST_W; }
   else { errs.push(`${p}: mancano i watt ("lo"/"hi" oppure "pct")`); return null; }
   if (lo > hi) { [lo, hi] = [hi, lo]; }
+  const maxW = Math.min(LIMITS.maxW, ftp * LIMITS.ftpMul);
+  if (!(lo >= 0 && hi <= maxW)) { errs.push(`${p}: watt fuori limite (${lo}-${hi} W; ammessi 0-${Math.round(maxW)} W): è un refuso?`); return null; }
   if (b.t !== 'rest' && hi - lo < MIN_RANGE_W) warns.push(`${p} (${b.n || b.t}): range ${lo}-${hi} W di soli ${hi - lo} W, sotto il minimo di ${MIN_RANGE_W} W`);
-  const cad = Array.isArray(b.cad) && b.cad.length === 2 && b.cad.every(isNum) ? b.cad : null;
+  const cad = Array.isArray(b.cad) && b.cad.length === 2 && b.cad.every(v => isNum(v) && v >= 0 && v <= 250) ? b.cad : null;
   return {
-    t: b.t, n: b.n || b.t, d: hasD ? b.d : null, dist: hasDist ? b.dist : null,
+    t: b.t, n: str(b.n, b.t, 60), d: hasD ? b.d : null, dist: hasDist ? b.dist : null,
     lo, hi, mid: (lo + hi) / 2, cad,
-    grade: isNum(b.grade) ? b.grade : null, hrCap: isNum(b.hrCap) ? b.hrCap : null, adjust: !!b.adjust
+    grade: isNum(b.grade) && b.grade >= -30 && b.grade <= 30 ? b.grade : null, hrCap: isNum(b.hrCap) && b.hrCap >= 30 && b.hrCap <= 250 ? b.hrCap : null, adjust: !!b.adjust
   };
 }
 

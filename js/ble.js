@@ -7,32 +7,33 @@ export const UUID = {
 
 /** Indoor Bike Data (0x2AD2) -> {speed km/h, cadence rpm, power W, hr} (campi assenti = null). */
 export function parseIndoorBikeData(dv) {
-  const flags = dv.getUint16(0, true);
-  let o = 2;
   const out = { speed: null, cadence: null, power: null, hr: null, distance: null };
-  if (!(flags & 0x0001)) { out.speed = dv.getUint16(o, true) * 0.01; o += 2; }      // bit0 = "more data": 0 => velocità presente
-  if (flags & 0x0002) o += 2;                                                       // velocità media
-  if (flags & 0x0004) { out.cadence = dv.getUint16(o, true) * 0.5; o += 2; }
-  if (flags & 0x0008) o += 2;                                                       // cadenza media
-  if (flags & 0x0010) { out.distance = dv.getUint16(o, true) | (dv.getUint8(o + 2) << 16); o += 3; }
-  if (flags & 0x0020) o += 2;                                                       // livello resistenza
-  if (flags & 0x0040) { out.power = dv.getInt16(o, true); o += 2; }
-  if (flags & 0x0080) o += 2;                                                       // potenza media
-  if (flags & 0x0100) o += 5;                                                       // energia (2+2+1)
-  if (flags & 0x0200) { out.hr = dv.getUint8(o); o += 1; }
+  try {                                                // un pacchetto troppo corto lancia RangeError: tengo ciò che ho già letto
+    const flags = dv.getUint16(0, true);
+    let o = 2;
+    if (!(flags & 0x0001)) { out.speed = dv.getUint16(o, true) * 0.01; o += 2; }      // bit0 = "more data": 0 => velocità presente
+    if (flags & 0x0002) o += 2;                                                       // velocità media
+    if (flags & 0x0004) { out.cadence = dv.getUint16(o, true) * 0.5; o += 2; }
+    if (flags & 0x0008) o += 2;                                                       // cadenza media
+    if (flags & 0x0010) { out.distance = dv.getUint16(o, true) | (dv.getUint8(o + 2) << 16); o += 3; }
+    if (flags & 0x0020) o += 2;                                                       // livello resistenza
+    if (flags & 0x0040) { out.power = dv.getInt16(o, true); o += 2; }
+    if (flags & 0x0080) o += 2;                                                       // potenza media
+    if (flags & 0x0100) o += 5;                                                       // energia (2+2+1)
+    if (flags & 0x0200) { out.hr = dv.getUint8(o); o += 1; }
+  } catch { /* pacchetto incompleto */ }
   return out;
 }
 
 /** Heart Rate Measurement (0x2A37) -> bpm. */
 export function parseHeartRate(dv) {
-  const flags = dv.getUint8(0);
-  return flags & 0x01 ? dv.getUint16(1, true) : dv.getUint8(1);
+  try { const flags = dv.getUint8(0); return flags & 0x01 ? dv.getUint16(1, true) : dv.getUint8(1); } catch { return 0; }   // pacchetto corto → nessun valore
 }
 
 /** Comando Set Target Power (opcode 0x05, sint16 W). */
 export function cmdSetTargetPower(w) {
   const b = new DataView(new ArrayBuffer(3));
-  b.setUint8(0, 0x05); b.setInt16(1, Math.round(w), true);
+  b.setUint8(0, 0x05); b.setInt16(1, Math.max(-32768, Math.min(32767, Number.isFinite(w) ? Math.round(w) : 0)), true);   // niente giri a vuoto (wrap) oltre i 16 bit
   return b.buffer;
 }
 
@@ -110,6 +111,8 @@ export class BleTrainer extends Base {
   /** invia il setpoint solo se cambia di ≥1 W o ogni 3 s (keep-alive) */
   setTargetPower(w) {
     if (!this.connected) return;
+    if (!Number.isFinite(w)) w = 50;                       // valore non valido: carico minimo
+    w = Math.max(0, Math.min(2000, w));                    // tetto assoluto, anche se il trainer non dichiara il suo range
     if (this.range) w = Math.max(this.range.min, Math.min(this.range.max, w));
     const now = Date.now();
     if (this.lastW !== null && Math.abs(w - this.lastW) < 1 && now - this.lastSent < 3000) return;

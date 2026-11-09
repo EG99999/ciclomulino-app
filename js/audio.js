@@ -18,7 +18,7 @@ function ensure() {
 }
 /** da chiamare al primo gesto dell'utente */
 export function unlock() { ensure(); }
-export function setVolume(v) { AUDIO.vol = v; if (master) master.gain.value = AUDIO.on ? v : 0; }
+export function setVolume(v) { v = Number.isFinite(+v) ? Math.min(1, Math.max(0, +v)) : 0.7; AUDIO.vol = v; if (master) master.gain.value = AUDIO.on ? v : 0; }
 export function setOn(on) { AUDIO.on = on; if (master) master.gain.value = on ? AUDIO.vol : 0; if (!on && windGain) windGain.gain.value = 0; }
 
 function tone({ f = 440, f2 = null, d = 0.2, type = 'square', g = 0.05, at = 0, pan = 0 }) {

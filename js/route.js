@@ -7,22 +7,36 @@ function bearing(a, b) { const y = Math.sin(rad(b[1] - a[1])) * Math.cos(rad(b[0
 const wrapPi = a => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
 const smooth = (a, w) => a.map((_, i) => { let s = 0, n = 0; for (let k = Math.max(0, i - w); k <= Math.min(a.length - 1, i + w); k++) { s += a[k]; n++; } return s / n; });
 
+const MAX_PTS = 200000, MAX_M = 2000000;     // limiti: 200 mila punti, 2000 km (un file malevolo non deve riempire la memoria)
+const numCache = {};
+const numIn = (s, tag) => { const re = numCache[tag] || (numCache[tag] = new RegExp('<' + tag + '[^>]*>\\s*([-+0-9.eE]+)\\s*<')); const m = s.match(re); return m ? parseFloat(m[1]) : null; };
+const attrIn = (a, k) => { const m = a.match(new RegExp('\\b' + k + '=["\']([-+0-9.eE]+)["\']')); return m ? m[1] : null; };
+/** scorre gli elementi <nome …>…</nome> in UN solo passaggio (niente regex annidate: tempo lineare) */
+function eachElement(text, names, fn) {
+  const re = new RegExp('<(' + names.join('|') + ')\\b', 'g'), noClose = {}; let m;
+  while ((m = re.exec(text))) {
+    const name = m[1], gt = text.indexOf('>', re.lastIndex); if (gt < 0) break;
+    const self = text[gt - 1] === '/', attrs = text.slice(re.lastIndex, self ? gt - 1 : gt); let body = null;
+    if (!self && !noClose[name]) { const end = text.indexOf('</' + name + '>', gt); if (end < 0) noClose[name] = true; else { body = text.slice(gt + 1, end); re.lastIndex = end; } }
+    if (fn(attrs, body) === false) break;
+  }
+}
 /** Estrae punti [lat, lon, quota] da GPX (trkpt/rtept) o TCX (Trackpoint). Restituisce {name, pts}. */
 export function parseTrack(text) {
-  const pts = [];
-  const num = (s, tag) => { const m = s.match(new RegExp('<' + tag + '[^>]*>\\s*([-+0-9.eE]+)\\s*<')); return m ? parseFloat(m[1]) : null; };
-  const re = /<(trkpt|rtept)\b([^>]*?)(\/>|>([\s\S]*?)<\/\1>)/g; let m;
-  while ((m = re.exec(text))) {
-    const lat = (m[2].match(/lat="([-+0-9.eE]+)"/) || [])[1], lon = (m[2].match(/lon="([-+0-9.eE]+)"/) || [])[1];
-    if (lat == null || lon == null) continue;
-    pts.push([parseFloat(lat), parseFloat(lon), m[4] ? num(m[4], 'ele') : null]);
-  }
+  text = String(text); const pts = [];
+  eachElement(text, ['trkpt', 'rtept'], (attrs, body) => {
+    const lat = attrIn(attrs, 'lat'), lon = attrIn(attrs, 'lon'); if (lat == null || lon == null) return;
+    const la = parseFloat(lat), lo = parseFloat(lon); if (!(Math.abs(la) <= 90 && Math.abs(lo) <= 180)) return;
+    pts.push([la, lo, body ? numIn(body, 'ele') : null]); if (pts.length >= MAX_PTS) return false;
+  });
   if (!pts.length) {
-    const tp = /<Trackpoint>([\s\S]*?)<\/Trackpoint>/g;
-    while ((m = tp.exec(text))) { const la = num(m[1], 'LatitudeDegrees'), lo = num(m[1], 'LongitudeDegrees'); if (la != null && lo != null) pts.push([la, lo, num(m[1], 'AltitudeMeters')]); }
+    eachElement(text, ['Trackpoint'], (attrs, body) => {
+      if (!body) return; const la = numIn(body, 'LatitudeDegrees'), lo = numIn(body, 'LongitudeDegrees');
+      if (la != null && lo != null && Math.abs(la) <= 90 && Math.abs(lo) <= 180) { pts.push([la, lo, numIn(body, 'AltitudeMeters')]); if (pts.length >= MAX_PTS) return false; }
+    });
   }
   const nm = text.match(/<(?:name|Name|Id)>\s*(?:<!\[CDATA\[)?([^<\]]+)/);
-  return { name: nm ? nm[1].trim() : '', pts };
+  return { name: nm ? nm[1].trim().slice(0, 80) : '', pts };
 }
 
 function resample(pts, step) {
@@ -43,7 +57,11 @@ export class Route {
   /** raw: {id?, name, pts:[[lat,lon,ele]], places?:[{n,d,c}], env?:[[d0,d1,'mountains']]} */
   constructor(raw) {
     this.id = raw.id || 'gpx'; this.name = raw.name || 'Percorso'; this.src = raw.src || '';
-    const pts = resample(raw.pts.filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1])), this.step = 25);
+    const valid = (Array.isArray(raw.pts) ? raw.pts : []).filter(p => Array.isArray(p) && Math.abs(p[0]) <= 90 && Math.abs(p[1]) <= 180);
+    if (valid.length > MAX_PTS) throw new Error('Troppi punti (max ' + MAX_PTS + ')');
+    let tot = 0; for (let i = 1; i < valid.length; i++) tot += hav(valid[i - 1], valid[i]);
+    if (tot > MAX_M) throw new Error('Percorso troppo lungo (max ' + MAX_M / 1000 + ' km)');
+    const pts = resample(valid, this.step = 25);
     if (pts.length < 8) throw new Error('Percorso troppo corto o senza punti');
     this.pts = pts; const n = pts.length;
     this.dist = new Float64Array(n); for (let i = 1; i < n; i++) this.dist[i] = this.dist[i - 1] + hav(pts[i - 1], pts[i]);
