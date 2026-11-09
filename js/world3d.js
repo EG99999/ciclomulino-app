@@ -160,7 +160,7 @@ void main(){
       if (m.type === 'tractor' && env !== 'country') { if (o) o.g.visible = false; continue; }
       if (m.type === 'ped' && env === 'mountains' && m.k % 3) { if (o) o.g.visible = false; continue; }
       const ob = this._moverObj(m), g = ob.g; g.visible = true;
-      const lat = m.type === 'ped' ? m.side * (6.4 + (env === 'city' ? 0 : 3) + m.off * 0.12) : m.lane * ROAD_HALF, f = this.path.frame(d, lat);
+      const lat = m.type === 'ped' ? m.side * (6.4 + (env === 'city' ? 0 : 3) + m.off * 0.12) : G.moverLane(m, rel) * ROAD_HALF, f = this.path.frame(d, lat);
       g.position.set(f.x, f.y + (m.type === 'ped' ? terrainH(d, lat, st.amp, st.quant) : 0.05), f.z);
       if (!st.sprite) { g.rotation.y = f.yaw + (m.vel < 0 ? Math.PI : 0); const sw = Math.sin(V.time * (m.type === 'ped' ? 6 : 8) + m.k); if (g.userData.legs) g.userData.legs.forEach((l, i) => { l.rotation.x = (i ? -1 : 1) * sw * (m.type === 'ped' ? 0.6 : 0.7); }); }
       else if (m.type === 'ped') g.position.y += Math.abs(Math.sin(V.time * 6 + m.k)) * 0.05;
@@ -171,7 +171,7 @@ void main(){
       let o = this.cross.get(x); const T2 = G.TRACK, rel = (((x.zc - dist + T2 / 2) % T2) + T2) % T2 - T2 / 2;
       if (!V.traffic || rel < 8 || rel > 160 || this.envOf(dist + rel) === 'mountains') { if (o) o.visible = false; continue; }
       if (!o) { const cs = typeof x.col === 'string' ? x.col : '#' + (x.col >>> 0).toString(16).padStart(6, '0'); o = st.sprite ? M.sprite(this.sprites.car(cs, false), 4.4, 2.6) : M.carMesh(new THREE.Color(cs), false); this.actors.add(o); this.cross.set(x, o); }
-      o.visible = true; const u = (((V.time * x.vx + x.ph) % 6) + 6) % 6 - 3, f = this.path.frame(dist + rel, u * ROAD_HALF * 1.2); o.position.set(f.x, f.y + 0.05, f.z); if (!st.sprite) o.rotation.y = f.yaw + (x.vx > 0 ? -Math.PI / 2 : Math.PI / 2);
+      o.visible = true; const u = G.crosserU(x), f = this.path.frame(dist + rel, u * ROAD_HALF * 1.2); o.position.set(f.x, f.y + 0.05, f.z); if (!st.sprite) o.rotation.y = f.yaw + (x.vx > 0 ? -Math.PI / 2 : Math.PI / 2);
     }
   }
   _updateBirds(dt, p) {
@@ -198,12 +198,31 @@ void main(){
     M.part(0.1, 0.1, 0.24, 0x15151c, -0.3, -0.4, -0.74, g); M.part(0.1, 0.1, 0.24, 0x15151c, 0.3, -0.4, -0.74, g);   // comandi
     M.part(0.07, 0.2, 0.07, bk.frame, 0, -0.55, -0.55, g); M.part(0.14, 0.04, 0.3, bk.accent, 0, -0.36, -0.4, g);      // attacco e telaio
     M.part(0.15, 0.6, 0.15, K.jersey, -0.32, -0.85, -0.5, g).rotation.x = -1.15; M.part(0.15, 0.6, 0.15, K.jersey, 0.32, -0.85, -0.5, g).rotation.x = -1.15;
+    // ciclocomputer sul manubrio: schermo disegnato su una texture, aggiornato solo quando cambiano i valori
+    const cv = document.createElement('canvas'); cv.width = 128; cv.height = 96; const tex = new THREE.CanvasTexture(cv); tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter;
+    const body = M.part(0.2, 0.155, 0.03, 0x15151c, 0, -0.2, -0.62, g); body.rotation.x = -0.5;
+    const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.18, 0.135), new THREE.MeshBasicMaterial({ map: tex, fog: false })); scr.position.set(0, 0, 0.0165); body.add(scr);   // lo schermo è figlio della scatola: stessa inclinazione, niente sovrapposizioni
+    this.fpCc = { cv, tex, scr, body, sig: '' };
     this.persp.add(g); this.fp = g;
+  }
+  _drawCc() {
+    const c = this.fpCc, v = V.ccView; if (!c) return; c.body.visible = !!v; if (!v) return;
+    const sig = v.cells.map(x => x.value).join('|') + '#' + v.page + '/' + v.pages; if (sig === c.sig) return; c.sig = sig;
+    const g = c.cv.getContext('2d'), W = 128, H = 96, rows = Math.ceil(v.cells.length / 2), ch = Math.floor((H - 10) / rows);
+    g.fillStyle = '#0b0a1c'; g.fillRect(0, 0, W, H); g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+    v.cells.forEach((x, i) => {
+      const cx = (i % 2) * 64, cy = Math.floor(i / 2) * ch + 2; g.fillStyle = '#17143a'; g.fillRect(cx + 2, cy + 1, 60, ch - 2);
+      g.fillStyle = '#9a93c9'; g.font = '6px "Press Start 2P", monospace'; g.fillText(String(x.label).slice(0, 9), cx + 5, cy + 9);
+      g.fillStyle = '#f4f1ff'; g.font = (rows > 2 ? 11 : 14) + 'px "Press Start 2P", monospace'; g.fillText(String(x.value).slice(0, 6), cx + 5, cy + ch - 5);
+    });
+    for (let i = 0; i < v.pages; i++) { g.fillStyle = i === v.page ? '#ffd24a' : '#3a3470'; g.fillRect(W / 2 - v.pages * 6 + i * 12 + 1, H - 6, 10, 3); }
+    c.tex.needsUpdate = true;
   }
   _animateRider(dt, p) {
     const R = this.rider, g = R.g, jump = V.jump / 20 * 0.9, lat = V.lat * 0.7 * ROAD_HALF, f = this.path.frame(V.dist, lat);
     g.position.set(f.x, f.y + 0.06 + jump + 0.03 * Math.abs(Math.sin(V.phase * 2)), f.z);
-    if (R.sprite) { if ((this.tick & 3) === 0) { const cv = G.riderCanvas(); if (cv) { this.riderTex.image = cv; this.riderTex.needsUpdate = true; } } g.visible = V.cam !== 'first'; return; }
+    const vis = V.cam !== 'first' && !(V.inv > 0 && ((V.time * 10) | 0) % 2);          // nel gioco lampeggia dopo un urto
+    if (R.sprite) { if ((this.tick & 3) === 0) { const cv = G.riderCanvas(); if (cv) { this.riderTex.image = cv; this.riderTex.needsUpdate = true; } } g.visible = vis; return; }
     g.rotation.y = f.yaw; const u = g.userData; u.lean.rotation.z = clamp(V.lean, -1.2, 1.2) * 0.35;
     const stand = V.running && V.slope > 4.5, tuck = V.slope < -2.5, ph = V.running ? V.phase : 0, gn = V.gesture ? V.gesture.name : '', gt = V.gesture ? V.gesture.t : 0;
     u.legs.forEach((l, i) => { l.rotation.x = V.jump > 1 ? 0.3 : Math.sin(ph + i * Math.PI) * 0.7; });
@@ -214,7 +233,7 @@ void main(){
     else if (gn === 'drink') { u.armR.rotation.set(-2.2, 0, 0.35); u.bottle.visible = true; u.bottle.position.set(0.3, 1.55, 0.35); u.head.rotation.x = -0.3; }
     else if (gn === 'shake') u.head.rotation.y = Math.sin(gt * 18) * 0.5;
     else if (gn === 'bell') u.armR.rotation.set(-1.2, 0, 0);
-    g.visible = V.cam !== 'first';
+    g.visible = vis;
   }
   _bubble(p) {
     const text = V.gesture && V.gesture.say && V.gesture.t > 0.2 && V.gesture.t < V.gesture.dur - 0.2 ? V.gesture.say : V.hitT > 0 ? 'AHI!' : '';
@@ -232,7 +251,7 @@ void main(){
     const fx = Math.sin(f.yaw), fz = Math.cos(f.yaw); let cam = this.persp; const shake = V.shake > 0 ? V.shake * 0.5 : 0;
     const rp = P.frame(dist, lat);
     if (V.cam === 'first') {
-      this._fpRig(); this.fp.visible = true; const eye = P.frame(dist + 0.3, lat), la = P.frame(dist + 22, lat * 0.5);
+      this._fpRig(); this.fp.visible = true; this._drawCc(); const eye = P.frame(dist + 0.3, lat), la = P.frame(dist + 22, lat * 0.5);
       this.persp.position.set(eye.x, eye.y + 1.45 + V.jump / 20 * 0.9, eye.z); this.persp.lookAt(la.x, la.y + 1.1, la.z); this.persp.rotateZ(clamp(V.lean, -1.2, 1.2) * 0.14);
       this.fp.rotation.z = Math.sin(V.phase) * 0.02; this.fp.position.y = Math.abs(Math.sin(V.phase * 2)) * 0.012; this.sky.visible = true; this.sun.target.position.copy(this.persp.position);
     } else {

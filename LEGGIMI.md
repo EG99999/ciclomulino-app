@@ -9,7 +9,7 @@
 2. **In locale** (senza internet): doppio clic su `avvia.bat` (serve Node) → http://localhost:8080/.
 
 Test automatici: `npm test`.
-Tasti: Spazio avvia/pausa (in modalità tastiera: salta) · → salta step · V vista 3ª/1ª persona · M menu · F schermo intero · N suoni.
+Tasti: Spazio avvia/pausa (in modalità tastiera: salta) · → salta step · V vista 3ª/1ª persona · C pagina del ciclocomputer · M menu · F schermo intero · N suoni.
 Modalità tastiera (menu): ↑ pedala, ↓ frena, ← → sterza, Spazio salta, P pausa, Esc esci.
 Anti-crash: la seduta si salva ogni 5 s nel browser; al riavvio compare «Seduta interrotta».
 Non verificato: service worker/installazione (il browser di prova non lo supporta), BLE in seduta lunga, import del .FIT su Garmin Connect, 60 FPS su monitor vero.
@@ -44,6 +44,15 @@ Non verificato: prestazioni su un PC reale con scheda grafica normale (nel brows
 Corretti dopo una revisione del codice: ripresa dopo un blocco anche per test e pedalata libera (si torna alla schermata di pedalata con percorso e partenza di prima), piano o workout trascinato durante la seduta (si applica quando esci, non rovina la seduta), trainer o fascia ricollegati senza doppioni, pedalata libera in pausa che manda un solo comando al trainer, tastiera → piano senza residui, mantenimento schermo acceso, .FIT grandi in coda per OneDrive, memoria delle nuvolette 3D, schede delle impostazioni, ripiego senza WebGL. 69 test automatici passano; provati nel browser: tutte le schede impostazioni, pedalata libera con simulatore, gioco con tastiera e cambio stile (tasti 1-4), ramp test fino in fondo (35'), blocco simulato e ripresa, 3D disattivato (ripiego 2D).
 Non provato: Bluetooth vero (anche i comandi di pendenza FTMS sul Suito-T), accesso Microsoft vero, scelta cartella su disco vero, audio, installazione come app.
 
+## Novità del 9 nov 2026
+- **Ruota**: Impostazioni → Bici → Ruota. Di serie 700x28C = 2136 mm (altre misure nell'elenco o a mano). La velocità «reale» si calcola dai giri della ruota se il trainer li manda (servizio Bluetooth CSC), altrimenti si usa la velocità che manda il trainer (FTMS). **Non verificato sul Suito-T**: dopo la prima pedalata vera, Impostazioni → Bici dice da dove arriva il dato.
+- **Ciclocomputer** (Impostazioni → Computer): riquadro a schermo e/o sul manubrio in prima persona (se sono attivi entrambi, in prima persona si vede solo quello sul manubrio). Fino a 6 pagine da 4 a 6 valori ciascuna: velocità virtuale, reale, media e massima; watt istantanei, 3", 10", media step e seduta, massimi, NP; cadenza; FC e FC media; % FTP; W/kg; pendenza; distanza; tempo e tempo step; D+; kJ; ora. Pagina successiva: clic sul riquadro o tasto C.
+- **Traffico**: negli allenamenti (piano, test FTP, pedalata libera) il ciclista ha sempre la precedenza e sta a destra: auto e mezzi lo superano larghi, le auto agli incroci aspettano sul bordo, buche e lavori li evita da solo. Nessuno scontro, mai.
+- **Gioco** (modalità tastiera): 3 vite, tutto vale (auto, ciclisti, trattori, auto agli incroci, buche, lavori). Dopo un urto si riparte dall'ultimo checkpoint (a ogni paese o ogni 2 km) con 3 secondi senza colpi; a zero vite compare «Game over» con distanza e tempo. Il gioco non salva .FIT né storico.
+- **Più PC con lo stesso account Microsoft**: oltre a piano e workout, ora si sincronizzano impostazioni (tranne quelle proprie del PC: collegamenti, cartella, volume, qualità grafica), storico delle sedute (si uniscono, nessuna si perde) e percorsi importati (max 6). File in `Apps/Open Trainer`: `impostazioni.json`, `storico.json`, `percorsi/`. Regola: vince l'ultima modifica; un PC che entra per la prima volta adotta ciò che trova sul cloud. Durante una seduta non cambia niente.
+- Primo avvio: «Benvenuto su Open Trainer»; tolte le frasi lampeggianti dal titolo.
+Non provato: Bluetooth vero (giri ruota/CSC e velocità del Suito-T), sincronizzazione con due account/PC veri (provata solo con un OneDrive finto nei test), ripiego Pixel 2D con le nuove regole del traffico (la logica è la stessa del 3D ed è coperta dai test).
+
 ## Sicurezza (8 nov 2026)
 Revisione completa del codice (lettura indipendente + prove) e correzioni. Cosa protegge l'app:
 - **File importati non fidati** (impostazioni, piano, workout, GPX/TCX): ogni valore è controllato per tipo e intervallo prima di essere usato o mostrato; testi e colori non conformi vengono scartati. Un file malevolo non può eseguire codice, bloccare il browser (ripetizioni enormi, tracce con milioni di punti) né mandare watt assurdi al trainer (tetto 2000 W e 4×FTP; il trainer riceve sempre valori dentro limiti sicuri).
@@ -52,5 +61,5 @@ Revisione completa del codice (lettura indipendente + prove) e correzioni. Cosa 
 - **Service worker:** vede solo i file del sito, mai Microsoft né indirizzi con parametri.
 - **Server locale (avvia.bat):** solo 127.0.0.1, solo i file del sito (non .git, note, piano personale), rifiuta richieste con un indirizzo diverso da localhost.
 - **Privacy:** nessun tracciamento, nessuna statistica; i dati restano nel browser (e nella tua cartella/OneDrive se li colleghi). Senza OneDrive il sito non fa nessuna richiesta a terzi (i due caratteri, Press Start 2P e VT323, sono scaricati una volta da Google Fonts e ospitati nel sito).
-- 17 test automatici di sicurezza (`test/security.test.js` e `test/onedrive.test.js`) controllano queste difese a ogni modifica.
+- I test automatici di sicurezza (`test/security.test.js`, `test/onedrive.test.js`, `test/features.test.js`) controllano queste difese a ogni modifica. Anche i dati che arrivano da OneDrive (impostazioni, storico, percorsi) sono trattati come non fidati e ripuliti campo per campo.
 Da sapere: i token Microsoft stanno nel browser di questo sito (localStorage): chi ha accesso al tuo PC o al tuo account GitHub potrebbe usarli, quindi tieni attiva la verifica in due passaggi su GitHub e Microsoft. Non provato: login Microsoft vero con la nuova CSP, installazione dell'app con il nuovo service worker.

@@ -27,3 +27,4 @@ Impostazioni → Dati → **Accedi con Microsoft** → scegli l'account → acce
 - Se non vuoi OneDrive non cambia niente: trascini `piano-app.json` come prima e tutto resta nel browser.
 - «Esci» nel menu cancella il permesso salvato nel browser. Per revocarlo del tutto: <https://account.live.com/consent/Manage>.
 - Limite: i file caricati dall'app sono al massimo 4 MB (un `.FIT` di 3 ore ne occupa circa 0,3).
+- **Più PC (stesso account)**: l'app tiene in `Apps/Open Trainer` anche `impostazioni.json` (le tue impostazioni, senza quelle proprie di ogni PC), `storico.json` (le sedute, unite tra i PC) e `percorsi/` (i GPX/TCX importati, max 6). Ogni PC li legge e li aggiorna da solo; vince l'ultima modifica.

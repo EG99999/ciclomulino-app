@@ -30,7 +30,7 @@ export function createScreens(api) {
   /* ---------------- HOME ---------------- */
   function home() {
     root.innerHTML = `<div class="home">
-      <div class="logowrap"><canvas id="logoCv" aria-label="Open Trainer"></canvas><div class="splash">Pedala. Gioca. Migliora!</div></div>
+      <div class="logowrap"><canvas id="logoCv" aria-label="Open Trainer"></canvas></div>
       <div class="homeRow"><button class="mc big" id="hGo">VAI</button><button class="mc sq" id="hSet" title="Impostazioni" aria-label="Impostazioni">⚙</button></div>
       <div class="homeSub"><button class="mc small" data-go="history">STORICO</button><button class="mc small" id="hTut">TUTORIAL</button></div>
       <div class="ver">Open Trainer · versione di prova${api.S.name ? ' · ciao ' + esc(api.S.name) : ''}</div></div>`;
@@ -87,7 +87,7 @@ export function createScreens(api) {
       box.innerHTML = `<h2>${selKind === 'ramp' ? 'Ramp test' : 'Test FTP 20 minuti'}</h2><p>${info.text}</p><div class="note">FTP di riferimento: <b>${ftp} W</b> (${api.ftpSource()}).</div><p class="hint">Alla fine ti propongo di salvare la nuova FTP nelle impostazioni; il piano del coach non viene toccato.</p>`;
       nx('AVANTI → COLLEGA', () => show('connect'));
     } else {
-      box.innerHTML = `<h2>Gioco con la tastiera</h2><p>↑ pedala, ↓ frena, ← → sterza, Spazio salta, P pausa, Esc esci. Schiva buche e lavori in corso. Non serve il trainer: usa il simulatore.</p>`;
+      box.innerHTML = `<h2>Gioco con la tastiera</h2><p>↑ pedala, ↓ frena, ← → sterza, Spazio salta, P pausa, Esc esci.</p><p>Qui tutto vale: auto, ciclisti, trattori, buche e lavori in corso ti fanno perdere una delle 3 vite e riparti dall'ultimo checkpoint (a ogni paese o ogni 2 km). A zero vite è game over. Non serve il trainer: usa il simulatore.</p>`;
       nx('GIOCA', () => api.launch('keys'));
     }
   }
@@ -108,7 +108,8 @@ export function createScreens(api) {
   }
 
   /* ---------------- IMPOSTAZIONI ---------------- */
-  const TABS = [['profilo', 'PROFILO'], ['bici', 'BICI'], ['ciclista', 'CICLISTA'], ['gioco', 'GIOCO'], ['audio', 'AUDIO'], ['grafica', 'GRAFICA'], ['dati', 'DATI'], ['aiuto', 'AIUTO']];
+  const WHEELS = [[2096, '700x23C'], [2105, '700x25C'], [2136, '700x28C (di serie sulle bici da strada)'], [2155, '700x32C'], [2168, '700x35C'], [2180, '700x38C'], [2200, '700x40C']];   // circonferenze esterne in mm (tabelle dei ciclocomputer)
+  const TABS = [['profilo', 'PROFILO'], ['bici', 'BICI'], ['computer', 'COMPUTER'], ['ciclista', 'CICLISTA'], ['gioco', 'GIOCO'], ['audio', 'AUDIO'], ['grafica', 'GRAFICA'], ['dati', 'DATI'], ['aiuto', 'AIUTO']];
   const fld = {
     num: (k, label, o = {}) => `<label class="f">${label}<input type="number" data-k="${k}" data-t="n" value="${esc(getPath(api.S, k) || '')}" ${o.min != null ? `min="${o.min}"` : ''} ${o.max != null ? `max="${o.max}"` : ''} step="${Number(o.step) || 1}" placeholder="${esc(o.ph || '')}">${o.hint ? `<i class="hint">${o.hint}</i>` : ''}</label>`,
     txt: (k, label, o = {}) => `<label class="f">${label}<input type="text" data-k="${k}" value="${esc(getPath(api.S, k))}" maxlength="${Number(o.max) || 30}" placeholder="${esc(o.ph || '')}"></label>`,
@@ -130,7 +131,15 @@ export function createScreens(api) {
       bici: () => `<h2>Bici</h2><div class="split2"><div>${fld.sel('__brand', 'Marca', brands.map(b => [b, b]))}${`<label class="f">Modello<select id="bkModel" data-k="bike">${bikes.filter(b => b.name.split(' ')[0] === brand).map(b => `<option value="${b.id}" ${b.id === S.bike ? 'selected' : ''}>${esc(b.name.slice(brand.length + 1))}</option>`).join('')}</select></label>`}
         ${fld.col('bikeColor.frame', 'Colore telaio')}${fld.col('bikeColor.accent', 'Colore dettagli e ruote')}${fld.sel('bikeColor.deep', 'Ruote', [[-1, 'Quelle originali'], [0, 'Profilo basso'], [1, 'Profilo alto'], [2, 'Lenticolare']])}
         <button class="mc small" data-act="bikeReset">COLORI ORIGINALI</button><p class="hint">Marche e modelli indicano solo la forma e i colori tipici della livrea: nessun logo ufficiale.</p></div>
-        <div class="pv"><canvas id="pvRider" width="56" height="72"></canvas></div></div>`,
+        <div class="pv"><canvas id="pvRider" width="56" height="72"></canvas></div></div>
+        <h2>Ruota</h2><label class="f">Misura<select id="wheelSel">${WHEELS.map(([mm, n]) => `<option value="${mm}" ${+S.wheelMm === mm ? 'selected' : ''}>${esc(n)} · ${mm} mm</option>`).join('')}<option value="custom" ${WHEELS.some(w => w[0] === +S.wheelMm) ? '' : 'selected'}>Altra misura (scrivila sotto)</option></select></label>
+        ${fld.num('wheelMm', 'Circonferenza esterna della ruota (mm)', { min: 1000, max: 2600, step: 1, hint: 'Di serie 2136 mm (700x28C). Serve a calcolare la velocità reale dai giri della ruota del trainer.' })}
+        <div class="note">Velocità reale ora: <b id="realSrc">${esc(api.realSource())}</b>. Se il Suito-T non manda i giri ruota, uso la velocità che calcola lui.</div>`,
+      computer: () => { const pages = api.ccPages(), ids = api.ccFields(); return `<h2>Ciclocomputer</h2>${fld.chk('ccCorner', 'Riquadro a schermo', 'Un piccolo ciclocomputer sullo schermo di gara. Clic sopra o tasto C per cambiare pagina.')}${fld.chk('ccBar', 'Sul manubrio (vista in 1ª persona)', 'Si vede sulla bici quando usi la visuale in prima persona (tasto V).')}
+        <h2>Pagine e valori</h2><p class="hint">Ogni pagina ha da 4 a 6 valori. Scegli tu quali.</p>
+        ${pages.map((p, pi) => `<div class="ccp"><b>PAGINA ${pi + 1}</b><div class="ccsel">${p.map((f, fi) => `<select data-cc="${pi}:${fi}" aria-label="Valore ${fi + 1} pagina ${pi + 1}">${ids.map(([id, n]) => `<option value="${id}" ${id === f ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>`).join('')}</div>
+          <div class="rowb"><button class="mc small" data-ccadd="${pi}" ${p.length >= 6 ? 'disabled' : ''}>+ VALORE</button><button class="mc small" data-ccrem="${pi}" ${p.length <= 4 ? 'disabled' : ''}>− VALORE</button><button class="mc small danger" data-ccdel="${pi}" ${pages.length <= 1 ? 'disabled' : ''}>ELIMINA PAGINA</button></div></div>`).join('')}
+        <div class="rowb"><button class="mc small" data-act="ccAddPage" ${pages.length >= 6 ? 'disabled' : ''}>+ NUOVA PAGINA</button><button class="mc small" data-act="ccReset">VALORI DI PARTENZA</button></div>`; },
       ciclista: () => `<h2>Il tuo ciclista</h2><div class="split2"><div>${fld.col('kit.jersey', 'Maglia · colore principale')}${fld.col('kit.jersey2', 'Maglia · secondo colore')}${fld.sel('kit.pattern', 'Motivo', Object.entries(api.patterns()))}${fld.col('kit.shorts', 'Pantaloncini')}${fld.col('kit.helmet', 'Casco')}${fld.sw('kit.skin', 'Pelle', ['#f6d5b8', '#f0b890', '#c68b5b', '#8d5a3b', '#5a3a28'])}
         <h2>Logo</h2>${fld.sel('kit.emblem', 'Emblema', [['', 'Nessuno'], ...Object.keys(api.emblems()).map(k => [k, ({ bolt: 'Fulmine', star: 'Stella', heart: 'Cuore', mountain: 'Montagna', flame: 'Fiamma', wheel: 'Ruota', sun: 'Sole', crown: 'Corona' })[k] || k])])}${fld.col('kit.emblemColor', 'Colore emblema e scritta')}${fld.txt('kit.text', 'Scritta (max 3 caratteri)', { max: 3, ph: 'es. ELI' })}
         <div class="rowb"><label class="mc small" for="imgIn">📷 LA TUA IMMAGINE</label><input type="file" id="imgIn" accept="image/*" hidden><button class="mc small" data-act="imgDel">TOGLI IMMAGINE</button></div><p class="hint">L'immagine viene ridotta a 10×10 pixel e resta solo sul tuo computer.${S.kit.img ? ' (caricata)' : ''}</p></div>
@@ -155,10 +164,16 @@ export function createScreens(api) {
     const pane = $('setPane'); if (!pane) return;
     pane.querySelectorAll('[data-k]').forEach(el => {
       const k = el.dataset.k; if (k === '__brand') { el.onchange = () => { const first = api.bikes().find(b => b.name.split(' ')[0] === el.value); if (first) { api.S.bike = first.id; apply('bike'); settings(); } }; return; }
-      const h = () => { let v = el.type === 'checkbox' ? el.checked : el.dataset.t === 'n' ? (el.value === '' ? 0 : +el.value) : el.value; if (k === 'bikeColor.deep' || k === 'quality') v = +v; setPath(api.S, k, v); const lab = $('v_' + k.replace('.', '_')); if (lab) lab.textContent = v; apply(k); preview(); wkg(); };
+      const h = () => { let v = el.type === 'checkbox' ? el.checked : el.dataset.t === 'n' ? (el.value === '' ? 0 : +el.value) : el.value; if (k === 'bikeColor.deep' || k === 'quality') v = +v; if (k === 'wheelMm') v = Math.min(2600, Math.max(1000, +v || 2136)); setPath(api.S, k, v); const lab = $('v_' + k.replace('.', '_')); if (lab) lab.textContent = v; apply(k); preview(); wkg(); };
       el.addEventListener(el.type === 'range' || el.type === 'color' || el.type === 'text' || el.type === 'number' ? 'input' : 'change', h);
     });
     pane.querySelectorAll('[data-sw]').forEach(b => b.onclick = () => { setPath(api.S, b.dataset.sw, b.dataset.v); apply(b.dataset.sw); settings(); });
+    const ws = $('wheelSel'); if (ws) ws.onchange = () => { if (ws.value === 'custom') { const i = pane.querySelector('[data-k="wheelMm"]'); if (i) i.focus(); } else { api.S.wheelMm = +ws.value; apply('wheelMm'); settings(); } };
+    pane.querySelectorAll('[data-cc]').forEach(sel => sel.onchange = () => { const [pi, fi] = sel.dataset.cc.split(':').map(Number), pages = api.ccPages(); if (pages[pi] && pages[pi][fi] != null) { pages[pi][fi] = sel.value; api.ccSet(pages); } });
+    const ids = () => api.ccFields().map(f => f[0]);
+    pane.querySelectorAll('[data-ccadd]').forEach(b => b.onclick = () => { const pages = api.ccPages(), p = pages[+b.dataset.ccadd], nx = ids().find(id => !p.includes(id)); if (p && p.length < 6 && nx) p.push(nx); api.ccSet(pages); settings(); });
+    pane.querySelectorAll('[data-ccrem]').forEach(b => b.onclick = () => { const pages = api.ccPages(), p = pages[+b.dataset.ccrem]; if (p && p.length > 4) p.pop(); api.ccSet(pages); settings(); });
+    pane.querySelectorAll('[data-ccdel]').forEach(b => b.onclick = () => { const pages = api.ccPages(); if (pages.length > 1) pages.splice(+b.dataset.ccdel, 1); api.ccSet(pages); settings(); });
     pane.querySelectorAll('[data-act]').forEach(b => b.onclick = () => act(b.dataset.act));
     const im = $('imgIn'); if (im) im.onchange = e => { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => { const img = new Image(); img.onload = () => { const c = document.createElement('canvas'); c.width = c.height = 10; const g = c.getContext('2d'); g.drawImage(img, 0, 0, 10, 10); api.S.kit.img = c.toDataURL('image/png'); apply('kit.img'); settings(); }; img.src = r.result; }; r.readAsDataURL(f); };
     const si = $('impSet'); if (si) si.onchange = async e => { if (e.target.files[0]) { await api.importSettings(e.target.files[0]); settings(); } };
@@ -167,6 +182,8 @@ export function createScreens(api) {
   function act(a) {
     if (a === 'bikeReset') { Object.assign(api.S.bikeColor, { frame: '', accent: '', deep: -1 }); apply('bikeColor'); settings(); }
     else if (a === 'imgDel') { api.S.kit.img = null; apply('kit.img'); settings(); }
+    else if (a === 'ccAddPage') { const pages = api.ccPages(); if (pages.length < 6) pages.push(['w', 'cad', 'hr', 'kmh']); api.ccSet(pages); settings(); }
+    else if (a === 'ccReset') { api.ccSet(null); settings(); }
     else if (a === 'testSound') api.testSound(); else if (a === 'tut') api.startTutorial(); else if (a === 'wiz') api.openWizard();
     else if (a === 'expSet') api.exportSettings(); else if (a === 'wipe') api.wipe();
   }

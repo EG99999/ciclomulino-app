@@ -117,3 +117,12 @@ button:focus-visible,select:focus-visible,.btn:focus-within{outline:3px solid va
 #tutHole{position:fixed;border:3px solid var(--acc);box-shadow:0 0 0 9999px rgba(10,8,28,.82);transition:all .25s;pointer-events:none;border-radius:4px}
 #tutCard{position:fixed;background:var(--panel);border:4px solid var(--acc);padding:12px 14px;pointer-events:auto;display:grid;gap:8px;line-height:1.1}
 #tutCard h3{margin:0;font-family:var(--px);font-size:10px;color:var(--acc);font-weight:400;line-height:1.5}#tutCard p{margin:0}.tp{font-family:var(--px);font-size:7px;color:var(--mute)}
+/* vite del gioco e ciclocomputer a schermo */
+.lives{position:absolute;left:50%;top:44px;transform:translateX(-50%);font-family:var(--px);font-size:15px;color:#ff5a5f;letter-spacing:5px;text-shadow:2px 2px 0 #000;z-index:3;pointer-events:none} .lives[hidden]{display:none}
+.cc{position:absolute;left:50%;bottom:108px;transform:translateX(-50%);width:min(250px,44vw);background:rgba(10,8,28,.88);border:3px solid var(--line);padding:6px;z-index:3;cursor:pointer;user-select:none} .cc[hidden]{display:none}
+.cc .cells{display:grid;grid-template-columns:1fr 1fr;gap:4px} .cc .c{background:#0d0a22;border:2px solid var(--line);padding:4px 6px;min-width:0}
+.cc .c i{display:block;font-style:normal;font-family:var(--px);font-size:6px;color:var(--mute);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cc .c b{font-family:var(--px);font-size:13px;font-weight:400;white-space:nowrap} .cc .c u{text-decoration:none;font-size:13px;color:var(--mute);margin-left:3px}
+.cc .pg{display:flex;justify-content:center;gap:5px;margin-top:5px} .cc .pg s{display:block;width:14px;height:5px;background:#0d0a22;border:1px solid var(--line);text-decoration:none} .cc .pg s.on{background:var(--acc)}
+.cc.up{bottom:134px}
+@media(max-width:760px){.cc{bottom:150px}.cc.up{bottom:150px}}

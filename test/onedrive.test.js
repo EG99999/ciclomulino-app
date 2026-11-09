@@ -86,3 +86,10 @@ test('uscita: token, coda dei .FIT e dati del login vengono cancellati', async (
   od.logout(); assert.equal(st.getItem('ciclomulino.ms'), null); assert.equal(st.getItem('ciclomulino.cloudq'), null); assert.equal(st.getItem('ciclomulino.cloudetag'), null);
 });
 test('uscita: i token vengono cancellati', async () => { const { od, st } = await setup(); await login(od); od.logout(); assert.ok(!od.signedIn); assert.equal(st.getItem('ciclomulino.ms'), null); });
+test('JSON sulla cartella dell\'app: scrive, rilegge, manca → null, testo rotto → null, troppo grande → errore', async () => {
+  const { od, f, st } = await setup(); await login(od); const cs = new CloudSync(od, { storage: st, onPlan() { }, onWorkouts() { } });
+  assert.equal(await cs.readJson('impostazioni.json'), null);
+  await cs.writeJson('impostazioni.json', { v: 1, mod: 5, settings: { weight: 72 } }); assert.deepEqual(await cs.readJson('impostazioni.json'), { v: 1, mod: 5, settings: { weight: 72 } });
+  f.files.set('rotto.json', { data: '{non json', etag: 'x' }); assert.equal(await cs.readJson('rotto.json'), null);
+  const meta = od.meta.bind(od); od.meta = async p => ({ ...(await meta(p)), size: 9e6 }); await assert.rejects(cs.readJson('impostazioni.json'), /troppo grande/);
+});

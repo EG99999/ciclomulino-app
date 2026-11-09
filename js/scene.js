@@ -8,7 +8,7 @@ export const V = {
   dist: 0, curve: 0, lean: 0, Hc: 74, reduced: false, phase: 0, running: false,
   view: 'prof', prog: 0, time: 0, speed: 0, slope: 0, cad: 0, power: 0, hard: false,
   env: 'country', gesture: null, bubble: null,
-  lat: 0, latT: 0, auto: true, jump: 0, jumpT: -1, shake: 0, hitT: 0, events: [], bike: 0,
+  lat: 0.5, latT: 0.5, rest: 0.5, inv: 0, auto: true, jump: 0, jumpT: -1, shake: 0, hitT: 0, events: [], bike: 0,   // lat 0.5 = corsia di destra (la strada va da -1 a +1)
   kit: { jersey: '#ff7a1a', jersey2: '#ffd070', pattern: 'zip', shorts: '#1a1a28', helmet: '#f4f1ff', skin: '#f0b890', emblem: '', emblemColor: '#ffffff', text: '', img: null },
   bikeC: null, traffic: true, hazards: true, gestures: true
 };
@@ -125,15 +125,15 @@ function buildWorld() {
   const add = (type, n, seed, o) => { for (let i = 0; i < n; i++) { const z = hsh(seed + i * 5) * TRACK; movers.push({ type, z0: z, k: seed + i, th: envAt(z), col: colors[Math.floor(hsh(seed + i * 11) * colors.length)], sh: shirts[Math.floor(hsh(seed + i * 13) * shirts.length)], ...o(i) }); } };
   add('car', 16, 1000, i => ({ vel: 12 + hsh(1000 + i) * 6, lane: -0.18 }));
   add('car', 24, 2000, i => ({ vel: -(11 + hsh(2000 + i) * 6), lane: -0.62, front: true }));
-  add('bike', 12, 3000, i => ({ vel: 4.5 + hsh(3000 + i) * 3.5, lane: 0.55 }));
+  add('bike', 12, 3000, i => ({ vel: 4.5 + hsh(3000 + i) * 3.5, lane: 0.82 }));      // sul bordo destro: il ciclista (corsia 0.35) li supera senza toccarli
   add('bike', 6, 4000, i => ({ vel: -(5 + hsh(4000 + i) * 3), lane: -0.82, front: true }));
-  add('tractor', 3, 5000, () => ({ vel: 3, lane: 0.3 }));
+  add('tractor', 3, 5000, () => ({ vel: 3, lane: 0.82 }));
   for (let i = 0; i < 70; i++) {
     const z = hsh(6000 + i * 3) * TRACK, th = envAt(z);
     const dens = th === 'city' ? 1 : th === 'country' ? 0.45 : 0.3; if (hsh(6100 + i) > dens + 0.25) continue;
     movers.push({ type: 'ped', z0: z, k: 6000 + i, th, vel: (hsh(6200 + i) < 0.5 ? -1 : 1) * (1.1 + hsh(6300 + i) * 0.6), side: hsh(6400 + i) < 0.5 ? -1 : 1, off: 6 + hsh(6500 + i) * 14, sh: shirts[Math.floor(hsh(6600 + i) * shirts.length)], dog: hsh(6700 + i) < 0.3 });
   }
-  for (let j = 0; j < TRACK / XING; j++) for (let n = 0; n < 2; n++) crossers.push({ zc: 360 + XING * j, k: j * 2 + n, vx: (n ? -1 : 1) * (0.35 + hsh(7000 + j + n) * 0.25), ph: hsh(7100 + j * 3 + n) * 6, col: colors[Math.floor(hsh(7200 + j + n * 9) * colors.length)] });
+  for (let j = 0; j < TRACK / XING; j++) for (let n = 0; n < 2; n++) crossers.push({ zc: 360 + XING * j, k: j * 2 + n, hold: 0, vx: (n ? -1 : 1) * (0.35 + hsh(7000 + j + n) * 0.25), ph: hsh(7100 + j * 3 + n) * 6, col: colors[Math.floor(hsh(7200 + j + n * 9) * colors.length)] });
 }
 const hazards = [];
 for (let i = 0; i < TRACK / 150; i++) {
@@ -261,9 +261,9 @@ function collect(cxAt, rh, H) {
     push(dz, () => {
       const yb = H + p * (180 - H), cx = cxAt(p), rwid = rh(p);
       if (m.type === 'ped') { const x = cx + m.side * (rwid + 1 + p * 8 + (th === 'city' ? 4 : 10) + m.off * p * ZM); if (x > -40 && x < 360) drawPed(p, x, yb, m); }
-      else if (m.type === 'car') drawCar(p, lane(p, cx, rwid, m.lane), yb, m, m.front);
-      else if (m.type === 'bike') drawCyclistNpc(p, lane(p, cx, rwid, m.lane), yb, m, m.front);
-      else if (m.type === 'tractor') drawTractor(p, lane(p, cx, rwid, m.lane), yb);
+      else if (m.type === 'car') drawCar(p, lane(p, cx, rwid, moverLane(m, dz)), yb, m, m.front);
+      else if (m.type === 'bike') drawCyclistNpc(p, lane(p, cx, rwid, moverLane(m, dz)), yb, m, m.front);
+      else if (m.type === 'tractor') drawTractor(p, lane(p, cx, rwid, moverLane(m, dz)), yb);
     });
   }
   for (const h of hazards) {
@@ -277,33 +277,70 @@ function collect(cxAt, rh, H) {
     const dz = (((x.zc - V.dist) % TRACK) + TRACK) % TRACK; if (dz < 8 || dz > 200) continue;
     const th = V.theme === 'auto' ? (ROUTE ? ROUTE.env(V.dist + dz) : envAt(x.zc)) : V.theme; if (th === 'mountains') continue;
     const p = pOf(dz); if (p <= 0.01) continue;
-    const u = (((V.time * x.vx + x.ph) % 6) + 6) % 6 - 3;
+    const u = crosserU(x);
     push(dz - 0.5, () => { const yb = H + p * (180 - H), px = cxAt(p) + u * rh(p) * 1.2; if (px > -80 && px < 400) drawCarSide(p, px, yb, '#' + (hex(x.col).map(v => v.toString(16).padStart(2, '0')).join('')), x.vx > 0); });
   }
   return list;
 }
 /** logica del mondo: ostacoli, salto, sterzo automatico. dt in secondi reali. */
+/* Regole del traffico.
+   ALLENAMENTO (V.auto = true): il ciclista ha sempre la precedenza e sta a destra. Nessuno lo urta mai: le auto che lo superano gli
+   passano larghe, quelle agli incroci aspettano sul bordo finché non è passato, buche e lavori li evita da solo.
+   GIOCO (V.auto = false, tastiera): tutto vale. Auto, ciclisti, trattori, auto agli incroci, buche e lavori possono colpirlo. */
+const HALF_W = { car: 0.3, bike: 0.12, tractor: 0.36 };      // mezza larghezza dei veicoli, in unità di corsia (la strada va da -1 a +1)
+const wrapD = d => ((d + TRACK / 2) % TRACK + TRACK) % TRACK - TRACK / 2;
+/** distanza (m) di un mezzo dal ciclista: positiva = davanti */
+export function moverRel(m) { return wrapD(m.z0 + m.vel * V.time - V.dist); }
+/** corsia reale di un mezzo: in allenamento si sposta per passare largo al ciclista */
+export function moverLane(m, rel) {
+  const hw = HALF_W[m.type]; if (!V.auto || !hw) return m.lane;
+  const R = V.lat * 0.7, gap = hw + 0.13, d = m.lane - R, k = 1 - Math.abs(rel) / 30;
+  if (k <= 0 || Math.abs(d) >= gap) return m.lane;
+  return m.lane + (R + (d >= 0 ? gap : -gap) - m.lane) * Math.min(1, k * 2);
+}
+/** posizione laterale (−3…+3) di un'auto che attraversa; in allenamento le auto in attesa restano ferme sul bordo */
+export function crosserU(x) { return ((((V.time - x.hold) * x.vx + x.ph) % 6) + 6) % 6 - 3; }
 export function updateWorld(dt) {
   if (V.jumpT >= 0) { V.jumpT += dt; const d = 0.75, k = V.jumpT / d; if (k >= 1) { V.jumpT = -1; V.jump = 0; V.events.push({ type: 'land' }); } else V.jump = 4 * 20 * k * (1 - k); }
   if (V.hitT > 0) V.hitT -= dt;
-  const riderLane = V.lat * 0.7;
+  if (V.inv > 0) V.inv -= dt;
+  const R = V.lat * 0.7, hit = what => { if (V.inv > 0) return; V.events.push({ type: 'hit', what }); V.hitT = 0.5; V.shake = 0.4; V.inv = 1.2; };
   let steerT = 0, steering = false;
   for (const h of hazards) {
     if (!V.hazards) { h.prev = 999; continue; }
-    const dz = (((h.z - V.dist) % TRACK) + TRACK) % TRACK;
-    const overlap = Math.abs(riderLane - h.lane) < h.w / 2 + 0.1;
-    if (V.auto && V.running && dz < 26 && dz > 1.5) {
-      if (h.type === 'works' && Math.abs(riderLane - h.lane) < h.w / 2 + 0.4) { steering = true; steerT = (h.lane >= 0 ? -1 : 1) * (Math.abs(h.lane) + h.w / 2 + 0.3) / 0.7; }
-      if (h.type === 'pothole' && overlap && dz < 11 && V.jumpT < 0) jump();
+    const dz = (((h.z - V.dist) % TRACK) + TRACK) % TRACK, sd = dz > TRACK / 2 ? dz - TRACK : dz;
+    if (V.auto) {                                  // allenamento: li evita da solo, senza mai toccarli
+      if (V.running && sd < 26 && sd > -2) {
+        const lo = h.lane - h.w / 2 - 0.13, hi = h.lane + h.w / 2 + 0.13;
+        if (h.type === 'works' && R > lo && R < hi) { steering = true; const t = (R - lo < hi - R || hi > 0.8) ? lo : hi; steerT = t / 0.7; }
+        if (h.type === 'pothole' && Math.abs(R - h.lane) < h.w / 2 + 0.1 && sd < Math.max(5, V.speed * 0.4 + 1) && V.jumpT < 0 && sd > 0.5) jump();
+      }
+      h.prev = dz; continue;
     }
+    const overlap = Math.abs(R - h.lane) < h.w / 2 + 0.1;
     if (h.prev > 2.2 && dz <= 2.2 && h.prev - dz < 30) {
       const rises = V.jump > 8;
-      if (overlap && !(h.type === 'pothole' && rises)) { V.events.push({ type: 'hit', what: h.type }); V.hitT = 0.5; V.shake = 0.4; }
+      if (overlap && !(h.type === 'pothole' && rises)) hit(h.type);
       else if (overlap && h.type === 'pothole' && rises) V.events.push({ type: 'jump' });
     }
     h.prev = dz;
   }
-  if (V.auto) V.latT = steering ? clamp(steerT, -1.1, 1.1) : 0;
+  if (V.traffic) {
+    for (const x of crossers) {                    // auto agli incroci
+      const rel = wrapD(x.zc - V.dist); if (rel < -3 || rel > 110) continue;
+      const u = crosserU(x);
+      if (V.auto) {
+        const onRoad = Math.abs(u * 1.2) < 1.1;
+        if (!onRoad && u * x.vx < 0) x.hold += dt;                    // sta per entrare: aspetta sul bordo finché il ciclista non è passato
+        else if (onRoad && rel < 70) x.hold -= dt * 1.4;              // già in mezzo alla strada: si sbriga a liberarla
+      } else if (V.running && Math.abs(rel) < 1.6 && Math.abs(u * 1.2 - R) < 0.33) hit('car');
+    }
+    if (!V.auto && V.running) for (const m of movers) {            // gioco: auto, ciclisti e trattori sulla strada
+      const hw = HALF_W[m.type]; if (!hw) continue;
+      if (Math.abs(moverRel(m)) < 1.8 && Math.abs(m.lane - R) < hw + 0.07) hit(m.type === 'car' ? 'car' : m.type === 'bike' ? 'bike' : 'tractor');
+    }
+  }
+  if (V.auto) V.latT = steering ? clamp(steerT, -1.1, 1.1) : V.rest;
   V.lat += (V.latT - V.lat) * Math.min(1, dt * 3);
   V.lat = clamp(V.lat, -1.15, 1.15);
   if (V.shake > 0) V.shake -= dt;

@@ -2,8 +2,38 @@
 // NON provato su hardware reale in questa sessione: i parser sono testati con byte di esempio (vedi test/).
 export const UUID = {
   ftms: 0x1826, indoorBike: 0x2ad2, control: 0x2ad9, status: 0x2ada, powerRange: 0x2ad8, feature: 0x2acc,
-  hr: 0x180d, hrMeasure: 0x2a37
+  hr: 0x180d, hrMeasure: 0x2a37,
+  csc: 0x1816, cscMeasure: 0x2a5b          // velocità e cadenza (giri ruota): lo offrono alcuni trainer, il Suito-T non è verificato
 };
+
+/** CSC Measurement (0x2A5B) -> giri ruota cumulativi + tempo dell'ultimo giro (1/1024 s) e, se presenti, giri pedivella. */
+export function parseCsc(dv) {
+  const out = { wheelRevs: null, wheelTime: null, crankRevs: null, crankTime: null };
+  try {
+    const f = dv.getUint8(0); let o = 1;
+    if (f & 0x01) { out.wheelRevs = dv.getUint32(o, true); out.wheelTime = dv.getUint16(o + 4, true); o += 6; }
+    if (f & 0x02) { out.crankRevs = dv.getUint16(o, true); out.crankTime = dv.getUint16(o + 2, true); }
+  } catch { /* pacchetto incompleto */ }
+  return out;
+}
+
+/** Velocità reale dai giri della ruota: km/h = giri × circonferenza ÷ tempo. Gestisce il ritorno a zero dei contatori e la ruota ferma. */
+export class WheelSpeed {
+  constructor() { this.prev = null; this.kmh = null; this.at = 0; }
+  /** circM = circonferenza in metri; now = ms. Ritorna i km/h (o null se ancora non si può dire). */
+  push(revs, time, circM, now = Date.now()) {
+    if (revs == null || time == null || !(circM > 0.5 && circM < 3)) return this.kmh;
+    const p = this.prev;
+    if (!p) { this.prev = { revs, time, at: now }; return this.kmh; }
+    const dr = (revs - p.revs) >>> 0, dt = ((time - p.time) & 0xffff) / 1024;
+    if (dr === 0 || dt === 0) { if (now - p.at > 2500) { this.kmh = 0; this.at = now; } return this.kmh; }
+    const k = dr * circM / dt * 3.6;
+    this.prev = { revs, time, at: now };
+    if (dr < 100000 && k >= 0 && k < 120) { this.kmh = k; this.at = now; }   // valori assurdi (salto del contatore) vengono ignorati
+    return this.kmh;
+  }
+  reset() { this.prev = null; this.kmh = null; this.at = 0; }
+}
 
 /** Indoor Bike Data (0x2AD2) -> {speed km/h, cadence rpm, power W, hr} (campi assenti = null). */
 export function parseIndoorBikeData(dv) {
@@ -70,7 +100,7 @@ export class BleTrainer extends Base {
   constructor() { super(); this.kind = 'ble'; this.range = null; this.queue = Promise.resolve(); this.lastW = null; this.lastSent = 0; this.name = ''; }
   async connect() {
     this._state('scan');
-    this.device = await navigator.bluetooth.requestDevice({ filters: [{ services: [UUID.ftms] }] });
+    this.device = await navigator.bluetooth.requestDevice({ filters: [{ services: [UUID.ftms] }], optionalServices: [UUID.csc] });
     this.name = this.device.name || 'Trainer';
     this.wantConnected = true;
     this._watch();
@@ -86,6 +116,8 @@ export class BleTrainer extends Base {
     this.cp = await svc.getCharacteristic(UUID.control);
     this.cp.addEventListener('characteristicvaluechanged', e => this._onCp(e.target.value));
     await this.cp.startIndications();
+    this.hasCsc = false;
+    try { const cs = await this.server.getPrimaryService(UUID.csc), ch = await cs.getCharacteristic(UUID.cscMeasure); ch.addEventListener('characteristicvaluechanged', e => { this.onData && this.onData({ csc: parseCsc(e.target.value) }); }); await ch.startNotifications(); this.hasCsc = true; } catch { /* il trainer non offre i giri ruota: resta la velocità dell'FTMS */ }
     try { const st = await svc.getCharacteristic(UUID.status); st.addEventListener('characteristicvaluechanged', e => this.onStatus && this.onStatus(e.target.value)); await st.startNotifications(); } catch { /* opzionale */ }
     try { const r = await (await svc.getCharacteristic(UUID.powerRange)).readValue(); this.range = { min: r.getInt16(0, true), max: r.getInt16(2, true) }; } catch { /* opzionale */ }
     await this._write(Uint8Array.of(0x00));            // Request Control

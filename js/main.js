@@ -2,14 +2,16 @@ import { parsePlan, pickSession, localISODate, DEFAULT_FTP } from './plan.js';
 import { Session } from './session.js';
 import { ERG_CFG } from './erg.js';
 import { speedFor } from './physics.js';
-import { BleTrainer, BleHr, bleAvailable } from './ble.js';
+import { BleTrainer, BleHr, bleAvailable, WheelSpeed } from './ble.js';
+import { CycloTracker, FIELDS, FIELD_IDS, DEFAULT_PAGES, parsePages, serializePages, readFields } from './computer.js';
 import { SimTrainer, SimHr } from './sim.js';
 import { buildFit, fitFileName } from './fit.js';
 import { Coach } from './coach.js';
 import * as Au from './audio.js';
 import * as G from './scene.js';
 import { Route, routeFromFile } from './route.js';
-import { loadSettings, saveSettings, sanitizeSettings } from './settings.js';
+import { loadSettings, saveSettings, sanitizeSettings, settingsPayload } from './settings.js';
+import { StateSync, MOD_KEY } from './sync.js';
 import { OneDrive, CloudSync } from './onedrive.js';
 import { MS_CLIENT_ID } from './config.js';
 import { runWizard, runTutorial } from './onboarding.js';
@@ -31,7 +33,14 @@ const store = {
 };
 
 const shim = { getItem: k => store.get(k), setItem: (k, v) => store.set(k, v) };
-const S = loadSettings(shim); const saveS = () => saveSettings(shim, S);
+const S = loadSettings(shim);
+let syncSig = JSON.stringify(settingsPayload(S)), syncTimer = 0, syncBusy = false;
+/** salva le impostazioni; se è cambiato qualcosa che si sincronizza, segna l'ora della modifica e programma la sincronizzazione con OneDrive */
+const saveS = () => {
+  const sig = JSON.stringify(settingsPayload(S));
+  if (sig !== syncSig) { syncSig = sig; try { const m = JSON.parse(store.get(MOD_KEY) || '{}'); m.settings = Date.now(); store.set(MOD_KEY, JSON.stringify(m)); } catch { /* ignora */ } queueStateSync(); }
+  return saveSettings(shim, S);
+};
 let scr = null;            // schermate (home, scelta, impostazioni...)
 /* ---------- stato applicazione ---------- */
 const A = {
@@ -40,8 +49,18 @@ const A = {
   inp: { power: 0, cad: 0, hr: null, lastData: 0 }, log: [], gain: 0, doneShown: false,
   route: null, startDist: 0, routes: [], rawPlan: '', cloudSessions: [], od: null, cloud: null,
   screen: 'home', mine: [], folderSync: null, folderHandle: null, watcher: null, simGrade: null, freeTarget: 0, afterDone: '', imported: [], lastPlace: '',
-  keys: new Set(), keyPower: 0, pg: [], pgT: 0, lastSave: 0, fps: 0, drawMs: 0
+  keys: new Set(), keyPower: 0, pg: [], pgT: 0, lastSave: 0, fps: 0, drawMs: 0,
+  real: { csc: null, cscAt: -1e9, ftms: null, ftmsAt: -1e9 },   // velocità reale: dai giri ruota (CSC) o dall'FTMS del trainer
+  wheel: new WheelSpeed(), cc: new CycloTracker(), ccPage: 0, ccSig: '', game: null
 };
+/** km/h reali dal trainer: prima i giri ruota × circonferenza, altrimenti la velocità che manda l'FTMS; null se non arriva niente */
+function realKmh() {
+  const now = performance.now(), r = A.real;
+  if (r.csc != null && now - r.cscAt < 4000) return r.csc;
+  if (r.ftms != null && now - r.ftmsAt < 4000) return r.ftms;
+  return null;
+}
+const realSource = () => { const now = performance.now(), r = A.real; return r.csc != null && now - r.cscAt < 4000 ? 'giri ruota × circonferenza' : r.ftms != null && now - r.ftmsAt < 4000 ? 'velocità inviata dal trainer' : 'nessun dato dal trainer'; };
 const quiet = () => A.speed > 5;           // a ×20/×60 niente suoni né messaggi
 
 /* ---------- utilità UI ---------- */
@@ -215,8 +234,9 @@ function devState(btn, kind) {
 function bindTrainer(t) {
   A.trainer = t;
   const st = devState('btnTrainer', 'trainer');
-  t.onState = (x, m) => { if (x === 'lost' || x === 'off') { A.inp.power = 0; A.inp.cad = 0; } if (x === 'on') A.simGrade = null; st(x, m); };
-  t.onData = d => { if (d.power != null) A.inp.power = Math.min(3000, Math.max(0, d.power)); if (d.cadence != null) A.inp.cad = Math.min(250, Math.max(0, d.cadence)); if (d.hr && d.hr >= 30 && d.hr <= 250) A.inp.hr = d.hr; A.inp.lastData = performance.now(); };
+  t.onState = (x, m) => { if (x === 'lost' || x === 'off') { A.inp.power = 0; A.inp.cad = 0; A.wheel.reset(); A.real.csc = null; A.real.ftms = null; } if (x === 'on') A.simGrade = null; st(x, m); };
+  t.onData = d => { const now = performance.now(); if (d.csc) { const k = A.wheel.push(d.csc.wheelRevs, d.csc.wheelTime, S.wheelMm / 1000, now); if (k != null) { A.real.csc = k; A.real.cscAt = now; } } if (d.speed != null && d.speed >= 0 && d.speed < 120) { A.real.ftms = d.speed; A.real.ftmsAt = now; }
+    if (d.power != null) A.inp.power = Math.min(3000, Math.max(0, d.power)); if (d.cadence != null) A.inp.cad = Math.min(250, Math.max(0, d.cadence)); if (d.hr && d.hr >= 30 && d.hr <= 250) A.inp.hr = d.hr; A.inp.lastData = performance.now(); };
   t.onError = m => { logEv('Trainer: ' + m); };
 }
 async function connectTrainer() {
@@ -265,12 +285,13 @@ async function startKeys() {
   const r = parsePlan({ ftp: A.ftp, sessions: [{ id: 'libero', title: 'Giro libero (tastiera)', type: 'Giro libero', notes: 'Modalità gioco: guidi tu con la tastiera.', blocks: [{ t: 'interval', n: 'Giro libero', d: 7200, lo: 100, hi: 400 }] }] });
   A.mode = 'keys'; A.keyPower = 0; G.V.auto = false;
   setSession(newSession(r.sessions[0], A.ftp, { noErg: true }), r.sessions[0]); A.session.start(); keepAwake(true);
+  G.V.lat = G.V.latT = G.V.rest; gameNew();
   $('keyhelp').hidden = false; $('menu').hidden = true; $('btnKeys').classList.add('sel'); $('btnKeys').textContent = '⌨ ESCI DAL GIOCO';
-  showCoach('Modalità gioco: ↑ pedala, ← → sterza, SPAZIO salta. Schiva buche e lavori!', 'info');
+  showCoach('Modalità gioco: ↑ pedala, ← → sterza, SPAZIO salta. Hai 3 vite: schiva auto, ciclisti, buche e lavori!', 'info');
   return true;
 }
 function stopKeys(silent) {
-  A.mode = 'plan'; G.V.auto = true; G.V.latT = 0; if (A.trainer && A.trainer.kind === 'sim') { A.trainer.manual = null; A.trainer.pedaling = true; A.trainer.cadBase = +$('rCad').value || 88; }
+  A.mode = 'plan'; G.V.auto = true; G.V.latT = G.V.rest; G.V.inv = 0; A.game = null; $('lives').hidden = true; $('gameover').hidden = true; if (A.trainer && A.trainer.kind === 'sim') { A.trainer.manual = null; A.trainer.pedaling = true; A.trainer.cadBase = +$('rCad').value || 88; }
   keepAwake(false);
   $('keyhelp').hidden = true; $('btnKeys').classList.remove('sel'); $('btnKeys').textContent = '⌨ MODALITÀ TASTIERA';
   if (silent) return;
@@ -278,11 +299,37 @@ function stopKeys(silent) {
   scr && scr.show('home');
 }
 function keysStep(dt) {
-  const k = A.keys, up = k.has('ArrowUp') || k.has('KeyW'), dn = k.has('ArrowDown') || k.has('KeyS');
-  A.keyPower = clamp(A.keyPower + (up ? 190 : dn ? -240 : -30) * dt, 0, 480);
+  const k = A.keys, over = A.game && A.game.over, up = !over && (k.has('ArrowUp') || k.has('KeyW')), dn = !over && (k.has('ArrowDown') || k.has('KeyS'));
+  A.keyPower = over ? 0 : clamp(A.keyPower + (up ? 190 : dn ? -240 : -30) * dt, 0, 480);
   const t = A.trainer; if (t && t.kind === 'sim') { t.manual = A.keyPower; t.pedaling = A.keyPower > 4; t.cadBase = 55 + A.keyPower * 0.13; }
-  G.V.latT = ((k.has('ArrowRight') || k.has('KeyD')) ? 1 : 0) - ((k.has('ArrowLeft') || k.has('KeyA')) ? 1 : 0);
+  const steer = ((k.has('ArrowRight') || k.has('KeyD')) ? 1 : 0) - ((k.has('ArrowLeft') || k.has('KeyA')) ? 1 : 0);
+  G.V.latT = over ? G.V.rest : steer || G.V.rest;                     // senza tasti il ciclista torna sulla corsia di destra
 }
+
+/* ---------- gioco (modalità tastiera): 3 vite, checkpoint, game over. Gli allenamenti non hanno mai scontri. ---------- */
+const LIVES = 3, HIT_TXT = { car: 'Investito da un\'auto', bike: 'Scontro con un ciclista', tractor: 'Scontro con un trattore', works: 'Sei finito nei lavori in corso', pothole: 'Sei caduto in una buca' };
+function drawLives() { const el = $('lives'), g = A.game; el.hidden = !(A.mode === 'keys' && g); if (g) el.textContent = '♥'.repeat(g.lives) + '♡'.repeat(Math.max(0, LIVES - g.lives)); }
+function gameNew() { const V = G.V; A.game = { lives: LIVES, cp: V.dist, over: false, place: '' }; V.inv = 2; $('gameover').hidden = true; drawLives(); }
+function gameHit(what) {
+  const g = A.game, s = A.session, V = G.V; if (!g || g.over || !s) return;
+  g.lives--; drawLives();
+  if (g.lives <= 0) {
+    g.over = true; A.keyPower = 0; s.pause('gameover');
+    $('goKm').textContent = (Math.max(0, s.dist) / 1000).toFixed(2) + ' km'; $('goT').textContent = fmt(s.t); $('gameover').hidden = false; return;
+  }
+  const back = Math.max(0, V.dist - g.cp);                          // si riparte dall'ultimo checkpoint
+  s.dist = Math.max(0, s.dist - back); s.stepDist = Math.max(0, s.stepDist - back);
+  V.dist = g.cp; V.lat = V.latT = V.rest; V.jump = 0; V.jumpT = -1; V.inv = 3; A.keyPower = 0;
+  showCoach((HIT_TXT[what] || 'Colpito') + '! Ti restano ' + g.lives + (g.lives === 1 ? ' vita' : ' vite') + ': riparti dall\'ultimo checkpoint.', 'warn');
+}
+/** checkpoint all'ingresso di un paese o ogni 2 km (mai più vicini di 500 m) */
+function gameTick() {
+  const g = A.game, V = G.V; if (!g || g.over) return;
+  const pl = A.route ? A.route.placeAt(V.dist) : null, nm = pl ? pl.n : '';
+  if (V.dist - g.cp >= 500 && ((nm && nm !== g.place) || V.dist - g.cp >= 2000)) { g.cp = V.dist; toast('✔ Checkpoint' + (nm ? ' · ' + nm : '')); }
+  g.place = nm;
+}
+function gameAgain() { const s = A.session, V = G.V; if (!s) return; s.dist = 0; s.stepDist = 0; V.dist = A.startDist; V.lat = V.latT = V.rest; V.jump = 0; V.jumpT = -1; A.keyPower = 0; s.resume(); gameNew(); }
 
 /* ---------- controlli ---------- */
 function ready() {
@@ -316,7 +363,8 @@ async function finalizeRide(s) {
   addRide(shim, rideFromSession(s, { weight: S.weight, ftp: A.ftp, mode: A.mode, fitName }));
   const hist = JSON.stringify(loadHistory(shim));
   if (S.autoFit && bytes && (await sendOut('fit', o => o.pushFit(fitName, bytes))) > 0) store.del(RUN_KEY);
-  await sendOut('storico', o => o.pushHistory && o.pushHistory(hist));
+  if (A.folderSync) { try { await A.folderSync.pushHistory(hist); } catch (e) { toast('Cartella: ' + e.message); } }
+  queueStateSync(500);                                    // OneDrive: unisce lo storico con quello degli altri PC e lo carica
 }
 function showDone() {
   const s = A.session; A.doneShown = true; keepAwake(false); saveRun(); finalizeRide(s);
@@ -350,6 +398,7 @@ $('btnMenu').onclick = () => { const mn = $('menu'); mn.hidden = !mn.hidden; $('
 $('btnFull').onclick = () => { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => toast('Schermo intero non disponibile')); };
 $('btnCam').onclick = () => { G.V.cam = G.V.cam === 'third' ? 'first' : 'third'; $('btnCam').textContent = G.V.cam === 'first' ? '🎥 PRIMA PERSONA' : '🎥 VISTA'; };
 $('btnTrainer').onclick = connectTrainer; $('btnHr').onclick = connectHr; $('btnSim').onclick = toggleSim; $('btnKeys').onclick = startKeys; $('btnSound').onclick = toggleSound;
+$('goAgain').onclick = gameAgain; $('goExit').onclick = () => { $('gameover').hidden = true; if (A.mode === 'keys') stopKeys(); };
 $('btnGo').onclick = toggleGo; $('btnSkip').onclick = () => A.session && A.session.skip();
 $('btnEnd').onclick = endSession; $('btnReset').onclick = resetSession;
 $('btnFit').onclick = () => downloadFit(); $('btnCloseDone').onclick = () => { $('done').hidden = true; leaveRide(); };
@@ -379,10 +428,11 @@ addEventListener('keydown', e => {
   if (A.mode === 'keys') {
     if (GAMEKEYS.includes(e.code)) { e.preventDefault(); A.keys.add(e.code); return; }
     if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) G.jump(); return; }
-    if (e.code === 'KeyP') { A.session && A.session.togglePause(); return; }
+    if (e.code === 'KeyP') { if (A.session && !(A.game && A.game.over)) A.session.togglePause(); return; }
     if (e.code === 'Escape') { startKeys(); return; }
   }
   { const sty = { Digit1: 'voxel', Digit2: 'ps1', Digit3: 'iso', Digit4: 'hd2d' }[e.code]; if (sty && A.screen === 'ride') { S.style = sty; saveS(); applySettings(); toast('Stile: ' + sty); return; } }
+  if (e.code === 'KeyC') ccNext();
   if (e.code === 'KeyM') $('btnMenu').click(); if (e.code === 'KeyF') $('btnFull').click(); if (e.code === 'KeyV') $('btnCam').click(); if (e.code === 'KeyN') toggleSound();
   if (A.mode !== 'keys') { if (e.code === 'Space') { e.preventDefault(); toggleGo(); } if (e.code === 'ArrowRight') A.session && A.session.skip(); }
 });
@@ -428,7 +478,7 @@ function handleEvents(s) {
       case 'pass': if (!quiet()) Au.passBy(e.pan); break;
       case 'hop': if (!quiet()) Au.whoosh(); break;
       case 'land': if (!quiet()) Au.land(); break;
-      case 'hit': if (!quiet()) Au.thud(); if (A.mode === 'keys') { A.keyPower *= 0.45; if (s.active) coach.onEvent({ type: 'hit' }, s); } break;
+      case 'hit': if (!quiet()) Au.thud(); if (A.mode === 'keys') gameHit(e.what); break;
       case 'jump': if (s.active && !quiet()) { coach.onEvent({ type: 'jump' }, s); Au.bell(); } break;
     }
   }
@@ -463,9 +513,29 @@ function drawPowerGraph(s) {
   if (s && s.step) { const y1 = H - s.step.lo / max * H, y2 = H - s.step.hi / max * H; g.fillStyle = 'rgba(255,255,255,.14)'; g.fillRect(0, y2, W, y1 - y2); }
   for (let i = 0; i < n; i++) { const v = A.pg[i], h = v / max * H; g.fillStyle = zoneCol(v / A.ftp * 100); g.fillRect(W - (n - i) * bw, H - h, bw + .5, h); }
 }
+/* ---------- ciclocomputer simulato: riquadro a schermo e/o sul manubrio (1ª persona) ---------- */
+function ccContext(s) {
+  const t = A.cc; t.update(performance.now() / 1000, A.inp.power, s.speed * 3.6, s.records, s);
+  return { kmh: s.speed * 3.6, kmhReal: realKmh(), kmhAvg: s.t > 0 ? s.dist / s.t * 3.6 : 0, kmhMax: t.maxKmh, w: A.inp.power, w3: s.avg3, w10: t.avg10, wStep: s.avgStep, wAvg: s.avgPower, wMax: s.maxP, np: t.np, cad: A.inp.cad, hr: A.inp.hr, hrAvg: s.avgHr, pct: A.inp.power / A.ftp * 100, wkg: S.weight > 0 ? A.inp.power / S.weight : 0, grade: s.grade, dist: s.dist, time: s.t, stepT: s.stepT, dplus: A.gain, kj: s.kj, now: new Date() };
+}
+let ccCache = ['', []];
+const ccPages = () => { if (ccCache[0] !== S.ccPages) ccCache = [S.ccPages, parsePages(S.ccPages)]; return ccCache[1]; };
+function ccUpdate(s) {
+  const el = $('cc'), V = G.V;
+  if (!s || (!S.ccCorner && !S.ccBar)) { el.hidden = true; V.ccView = null; return; }
+  const pages = ccPages(); A.ccPage = clamp(A.ccPage, 0, pages.length - 1);
+  const cells = readFields(pages[A.ccPage], ccContext(s));
+  V.ccView = S.ccBar ? { cells, page: A.ccPage, pages: pages.length } : null;
+  el.hidden = !S.ccCorner || (S.ccBar && V.cam === 'first'); if (el.hidden) return; el.classList.toggle('up', A.mode === 'keys');   // se sono attivi entrambi, in 1ª persona resta solo quello sul manubrio   // nel gioco sta sopra l'aiuto dei tasti
+  const sig = cells.map(c => c.value).join('|') + '#' + A.ccPage + '#' + pages.length + '#' + S.ccPages;
+  if (sig !== A.ccSig) { A.ccSig = sig; el.innerHTML = `<div class="cells">${cells.map(c => `<div class="c"><i>${esc(c.label)}</i><b>${esc(c.value)}</b>${c.unit ? `<u>${esc(c.unit)}</u>` : ''}</div>`).join('')}</div>${pages.length > 1 ? `<div class="pg">${pages.map((_, i) => `<s class="${i === A.ccPage ? 'on' : ''}"></s>`).join('')}</div>` : ''}`; }
+}
+function ccNext() { A.ccPage = (A.ccPage + 1) % Math.max(1, ccPages().length); A.ccSig = ''; }
+$('cc').onclick = ccNext;
+
 function ui() {
   const s = A.session, tr = A.trainer;
-  const d = new Date();
+  const d = new Date(); ccUpdate(A.screen === 'ride' ? s : null);
   $('clock').textContent = d.toLocaleDateString('it-IT', { weekday: 'short', day: '2-digit', month: '2-digit' }).toUpperCase() + ' ' + d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
   $('tFtp').textContent = 'FTP ' + A.ftp + ' W';
   const connected = !!(tr && tr.connected);
@@ -579,10 +649,10 @@ function frameBody(now) {
     V.phase += A.inp.cad / 60 * Math.PI * 2 * real * (s.active ? 1 : 0);
     const curveAt = d => A.route ? A.route.curveAt(d) : 60 * Math.sin(d * 0.0045) * Math.sin(d * 0.0013 + 1) * (V.env === 'city' ? 0.35 : 1);
     V.curve = curveAt(V.dist);
-    const leanT = clamp((curveAt(V.dist + 12) - curveAt(V.dist)) / 6, -1, 1) * clamp(s.speed / 6, 0, 1) + V.latT * clamp(s.speed / 8, 0, 1) * 0.5;
+    const leanT = clamp((curveAt(V.dist + 12) - curveAt(V.dist)) / 6, -1, 1) * clamp(s.speed / 6, 0, 1) + (V.latT - V.lat) * clamp(s.speed / 8, 0, 1) * 0.5;
     V.lean += (leanT - V.lean) * Math.min(1, real * 3);
     V.Hc += ((74 - s.grade * 1.8) - V.Hc) * Math.min(1, real * 0.6);
-    G.updateGestures(real, V); G.updateWorld(real);
+    G.updateGestures(real, V); G.updateWorld(real); if (A.mode === 'keys' && s.active) gameTick();
     if (A.route) { const pl = A.route.placeAt(V.dist); const nm = pl ? pl.n : ''; if (nm && nm !== A.lastPlace) { A.lastPlace = nm; const en = $('envName'); en.textContent = '📍 ' + nm.toUpperCase(); en.classList.add('show'); setTimeout(() => en.classList.remove('show'), 3500); } else if (!nm) A.lastPlace = ''; }
     if (V.env !== lastEnv && !(A.route && A.lastPlace)) { lastEnv = V.env; const en = $('envName'); en.textContent = G.ENV_NAME[V.env]; en.classList.add('show'); setTimeout(() => en.classList.remove('show'), 3500); }
   }
@@ -598,7 +668,7 @@ function frameBody(now) {
 const clientId = () => MS_CLIENT_ID || S.clientId;
 function cloudUi() {
   const on = !!(A.od && A.od.signedIn), cid = !!clientId();
-  $('cloudStatus').textContent = on ? '✓ Collegato come ' + (A.od.account || 'account Microsoft') + ' · cartella «Apps/Ciclomulino»' : 'Non collegato. Senza OneDrive l\'app funziona lo stesso: i file restano sul tuo computer.';
+  $('cloudStatus').textContent = on ? '✓ Collegato come ' + (A.od.account || 'account Microsoft') + ' · cartella «Apps/Open Trainer»' : 'Non collegato. Senza OneDrive l\'app funziona lo stesso: i file restano sul tuo computer.';
   $('msClientRow').hidden = !!MS_CLIENT_ID || on; $('msClient').value = S.clientId;
   $('btnMsLogin').hidden = on; $('btnMsSync').hidden = !on; $('btnMsPush').hidden = !on; $('btnMsLogout').hidden = !on;
   $('chkAutoSync').checked = S.autoSync; $('chkAutoFit').checked = S.autoFit; $('btnMsLogin').disabled = false; void cid;
@@ -622,16 +692,36 @@ async function msLogin() {
   S.clientId = ($('msClient').value || S.clientId || '').trim(); saveS(); makeCloud();
   try { location.assign(await A.od.loginUrl()); } catch (e) { toast(e.message); }
 }
+/* ---------- sincronizzazione tra PC (impostazioni, storico, percorsi importati) ---------- */
+function queueStateSync(delay = 4000) { clearTimeout(syncTimer); if (A.od && A.od.signedIn && S.autoSync) syncTimer = setTimeout(() => runStateSync(false).catch(() => { /* già segnalato */ }), delay); }
+async function runStateSync(manual, pulled = { plan: false, workouts: 0 }) {
+  if (!A.cloud || !A.od || !A.od.signedIn) return;
+  if (syncBusy) { if (manual) toast('Sincronizzazione già in corso'); return; }
+  syncBusy = true;
+  try {
+    const sy = new StateSync({
+      cloud: A.cloud, storage: shim, getSettings: () => S, busy: busyRide, getRoutes: () => A.imported,
+      applyRemote: next => { Object.assign(S, next); syncSig = JSON.stringify(settingsPayload(S)); saveSettings(shim, S); applySettings(); if (A.screen === 'settings') scr.show('settings'); },
+      addRoutes: list => { A.imported = [...A.imported, ...list].slice(-6); store.set('ciclomulino.gpx', JSON.stringify(A.imported)); loadRoutes(); },
+      validateRoute: j => { new Route(j); }
+    });
+    const r = await sy.run();
+    const news = [pulled.plan ? 'piano' : '', pulled.workouts ? 'workout' : '', r.settings === 'scaricate' ? 'impostazioni' : '', r.rides ? 'storico' : '', r.routes ? 'percorsi' : ''].filter(Boolean);
+    $('cloudStatus').textContent = news.length ? 'OneDrive: aggiornato (' + news.join(', ') + ')' : 'OneDrive: già aggiornato';
+    if (manual || r.settings === 'scaricate') toast(news.length ? 'OneDrive: aggiornato (' + news.join(', ') + ')' : 'OneDrive: nessuna novità');
+  } catch (e) { $('cloudStatus').textContent = 'OneDrive: ' + e.message; if (manual) toast('OneDrive: ' + e.message); }
+  finally { syncBusy = false; }
+}
 async function syncNow(manual) {
   if (A.folderSync) { try { await A.folderSync.pull(manual); if (manual) toast('Cartella: controllata'); } catch (e) { $('folderStatus').textContent = 'Cartella: ' + e.message; if (manual) toast('Cartella: ' + e.message); } }
   if (!A.od || !A.od.signedIn) return;
-  try { await A.cloud.flushQueue(); const r = await A.cloud.pull(manual); if (manual) toast(r.plan || r.workouts ? 'OneDrive: aggiornato' : 'OneDrive: nessuna novità'); }
+  try { await A.cloud.flushQueue(); const r = await A.cloud.pull(manual); await runStateSync(manual, r); }
   catch (e) { $('cloudStatus').textContent = 'OneDrive: ' + e.message; if (manual) toast('OneDrive: ' + e.message); if (e.status === 401 || /Microsoft:/.test(e.message)) cloudUi(); }
 }
 $('btnMsLogin').onclick = msLogin;
 $('btnMsSync').onclick = () => syncNow(true);
 $('btnMsPush').onclick = async () => { if (!A.rawPlan) { toast('Nessun piano caricato'); return; } try { await A.cloud.pushPlan(A.rawPlan); toast('Piano caricato su OneDrive'); } catch (e) { toast('OneDrive: ' + e.message); } };
-$('btnMsLogout').onclick = () => { A.od.logout(); S.cloud = false; saveS(); cloudUi(); toast('Scollegato da OneDrive'); };
+$('btnMsLogout').onclick = () => { A.od.logout(); clearTimeout(syncTimer); try { const m = JSON.parse(store.get(MOD_KEY) || '{}'); delete m.joined; store.set(MOD_KEY, JSON.stringify(m)); } catch { /* ignora */ } S.cloud = false; saveS(); cloudUi(); toast('Scollegato da OneDrive'); };   // con un altro account il PC adotterà di nuovo ciò che trova sul suo cloud
 $('chkAutoSync').onchange = e => { S.autoSync = e.target.checked; saveS(); }; $('chkAutoFit').onchange = e => { S.autoFit = e.target.checked; saveS(); };
 $('msClient').onchange = e => { S.clientId = e.target.value.trim(); saveS(); };
 async function cloudStart() {
@@ -715,7 +805,7 @@ async function launch(kind) {
     const r = parsePlan({ ftp: A.ftp, sessions: [raw] }), p = r.sessions[0];
     setSession(newSession(p, A.ftp, { noErg: true }), p); syncTrainerFtp();
   }
-  A.session.start(); keepAwake(true); G.V.dist = A.startDist; G.V.lat = 0; scr.show('ride'); applySettings();
+  A.session.start(); keepAwake(true); G.V.dist = A.startDist; G.V.lat = G.V.latT = G.V.rest; scr.show('ride'); applySettings();
   showCoach(A.mode === 'test' ? (kind === 'ramp' ? 'Ramp test: pedala fino al limite, io alzo il carico ogni minuto.' : 'Test 20 minuti: ↑/↓ cambiano i watt di 5.') : A.mode === 'free' ? 'Pedalata libera: il trainer segue la pendenza.' : 'Si parte!', 'info');
 }
 function leaveRide() {
@@ -745,7 +835,7 @@ function startTutorial() {
     { sel: '#routeSel', before: () => menuOpen(true), title: 'Percorsi reali', text: 'Scegli un percorso della provincia di Brescia o importa un file GPX/TCX da Garmin Connect: pendenze e curve diventano quelle vere.' },
     { sel: '#btnSim', before: () => menuOpen(true), title: 'Simulatore', text: 'Fa finta di essere trainer e cardio: perfetto per provare tutto senza pedalare. Puoi anche simulare fatica e perdita di segnale.' },
     { sel: '#btnKeys', before: () => menuOpen(true), title: 'Modalità tastiera', text: 'Una modalità gioco: ↑ pedala, ← → sterza, Spazio salta le buche e i lavori in corso.' },
-    { sel: '#cloudBox', before: () => menuOpen(true), title: 'OneDrive (facoltativo)', text: 'Se vuoi, il piano arriva da OneDrive e i .FIT ci vengono salvati da soli. L\'app vede solo la sua cartella «Apps/Ciclomulino».' },
+    { sel: '#cloudBox', before: () => menuOpen(true), title: 'OneDrive (facoltativo)', text: 'Se vuoi, il piano arriva da OneDrive e i .FIT ci vengono salvati da soli. L\'app vede solo la sua cartella «Apps/Open Trainer».' },
     { sel: '#btnGo', before: () => menuOpen(false), title: 'Avvia, pausa, auto-pausa', text: 'Avvia la seduta (o Spazio). Se ti fermi sui pedali per 5" va in pausa da sola e riparte appena pedali.' },
     { sel: '#btnCam', before: () => menuOpen(false), title: 'Vista', text: 'Cambia tra vista da dietro e prima persona (tasto <b>V</b>). <b>F</b> schermo intero, <b>N</b> suoni.' },
     { title: 'Non perdi niente', text: 'La seduta si salva ogni 5": se il browser si chiude ti propone di riprendere o di scaricare il .FIT. A fine seduta scarichi il file da importare su Garmin Connect.' }
@@ -774,6 +864,8 @@ if (!bleAvailable()) logEv('Web Bluetooth assente: usa Edge/Chrome. Il simulator
 checkRecovery();
 const api = {
   A, S, saveS, toast, applySettings, startTutorial, openWizard, ftp: refFtp, planFtp, ftpSource,
+  realSource, ccPages: () => parsePages(S.ccPages), ccFields: () => FIELD_IDS.map(id => [id, FIELDS[id].name]),
+  ccSet: pages => { S.ccPages = pages ? serializePages(pages) : DEFAULT_PAGES; saveS(); A.ccPage = 0; A.ccSig = ''; },
   onScreen: n => { A.screen = n; document.body.dataset.screen = n; },
   bikes: () => G.BIKES.map(b => ({ id: b.id, name: b.name })), patterns: () => G.PATTERNS, emblems: () => G.EMBLEMS, previewRider: c => G.previewRider(c),
   routes: () => A.routes, currentRoute: () => (A.route ? A.route.id : 'auto'), applyRoute: id => applyRoute(id, true),

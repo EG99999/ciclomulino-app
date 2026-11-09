@@ -7,7 +7,7 @@ export function runWizard(ctx) {
   const { S, save, bikes, actions } = ctx, root = $('wizard');
   const steps = [
     () => ({
-      title: 'BENVENUTO IN CICLOMULINO',
+      title: 'BENVENUTO SU OPEN TRAINER',
       body: `<p>Pedali sul ciclomulino e giochi: l'app regola il carico (ERG), conta tutto e a fine seduta ti dà il file .FIT per Garmin.</p>
         <p>Facciamo 4 passi veloci di configurazione. Puoi cambiare tutto dopo dal menu.</p>
         <label class="f">Come ti chiami? (facoltativo)<input id="wzName" type="text" maxlength="24" value="${esc(S.name)}" placeholder="es. Elia"></label>`,
@@ -21,7 +21,7 @@ export function runWizard(ctx) {
         <div id="wzMs" ${S.planMode === 'onedrive' ? '' : 'hidden'}>
           ${ctx.msReady ? '' : `<label class="f">Client ID Microsoft<input id="wzCid" type="text" value="${esc(S.clientId)}" placeholder="incolla l'ID dell'app (vedi GUIDA-ONEDRIVE.md)"></label>`}
           <button id="wzLogin" class="go">ACCEDI CON MICROSOFT</button>
-          <div class="hint" id="wzMsInfo">${S.cloud ? '✓ Account collegato' : "L'app vedrà solo la sua cartella «Apps/Ciclomulino», nient'altro del tuo OneDrive."}</div>
+          <div class="hint" id="wzMsInfo">${S.cloud ? '✓ Account collegato' : "L'app vedrà solo la sua cartella «Apps/Open Trainer», nient'altro del tuo OneDrive."}</div>
         </div>`,
       bind: () => {
         document.querySelectorAll('input[name=pm]').forEach(r => r.onchange = () => { S.planMode = r.value; $('wzMs').hidden = r.value !== 'onedrive'; save(); });

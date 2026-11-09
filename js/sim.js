@@ -1,4 +1,5 @@
 // Simulatore integrato di trainer + FC (stessa interfaccia dei dispositivi BLE, più tick(dt)).
+import { speedFor } from './physics.js';
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
 export class SimTrainer {
@@ -33,7 +34,7 @@ export class SimTrainer {
     const p = this.power > 1 ? this.power * (1 + (Math.random() - 0.5) * 0.012) : 0;
     const hrT = 62 + 0.34 * this.power;
     this.hr += (hrT - this.hr) * Math.min(1, dt / 30);
-    this.last = { power: Math.round(p), cadence: Math.round(this.cad * 2) / 2, speed: null, hr: null };
+    this.last = { power: Math.round(p), cadence: Math.round(this.cad * 2) / 2, speed: p > 1 ? Math.round(speedFor(p, 0) * 360) / 100 : 0, hr: null };   // km/h su strada piana, come lo manderebbe un trainer
     this.onData && this.onData(this.last);
   }
 }

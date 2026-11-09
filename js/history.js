@@ -12,6 +12,23 @@ export function rideFromSession(s, { weight = 0, ftp = 0, mode = 'plan', fitName
   const avgP = s.avgPower, np = normalizedPower(s.records);
   return { id: when + '-' + s.plan.id, when, title: s.plan.title, type: s.plan.type || '', mode, durS: Math.round(s.t), km: +(s.dist / 1000).toFixed(2), avgP: Math.round(avgP), np: Math.round(np), maxP: Math.round(s.maxP), kj: Math.round(s.kj), hr: Math.round(s.avgHr || 0), wkg: weight > 0 ? +(avgP / weight).toFixed(2) : null, ftp, fit: fitName, done: s.doneReason || '' };
 }
+/* Dati che arrivano dal cloud o da un altro PC non sono fidati: ogni riga dello storico viene ricostruita campo per campo. */
+const num = (v, hi) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(0, v)) : 0);
+const txt = (v, n) => String(v == null ? '' : v).replace(/[\u0000-\u001f<>"'`&]/g, '').slice(0, n);
+export function cleanRide(r) {
+  if (!r || typeof r !== 'object') return null;
+  const when = num(r.when, 4e12); if (!when) return null;
+  return { id: txt(r.id, 120) || String(when), when, title: txt(r.title, 120), type: txt(r.type, 60), mode: ['plan', 'test', 'free'].includes(r.mode) ? r.mode : 'plan',
+    durS: num(r.durS, 1e6), km: num(r.km, 1e5), avgP: num(r.avgP, 5000), np: num(r.np, 5000), maxP: num(r.maxP, 10000), kj: num(r.kj, 1e6), hr: num(r.hr, 300),
+    wkg: typeof r.wkg === 'number' && Number.isFinite(r.wkg) ? num(r.wkg, 50) : null, ftp: num(r.ftp, 2000), fit: txt(r.fit, 120), done: txt(r.done, 30) };
+}
+/** unione di due storici (stessa seduta = stesso id), dalla più recente, al massimo 300 */
+export function mergeHistory(a, b) {
+  const m = new Map();
+  for (const r of [...(Array.isArray(a) ? a : []), ...(Array.isArray(b) ? b : [])]) { const c = cleanRide(r); if (c && !m.has(c.id)) m.set(c.id, c); }
+  return [...m.values()].sort((x, y) => y.when - x.when).slice(0, 300);
+}
+export function saveHistory(storage, list) { try { storage.setItem(KEY, JSON.stringify(list)); return true; } catch { return false; } }
 export function loadHistory(storage) { try { return JSON.parse(storage.getItem(KEY) || '[]'); } catch { return []; } }
 export function addRide(storage, ride) {
   const h = loadHistory(storage).filter(r => r.id !== ride.id); h.push(ride); h.sort((a, b) => b.when - a.when);

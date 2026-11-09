@@ -66,6 +66,8 @@
   <div class="banner" id="banner">PRONTO</div>
   <div class="keyhelp" id="keyhelp" hidden><b>↑</b> pedala <b>↓</b> frena <b>← →</b> sterza <b>SPAZIO</b> salta <b>P</b> pausa <b>ESC</b> esci</div>
   <div class="env" id="envName"></div>
+  <div class="lives" id="lives" hidden aria-label="Vite"></div>
+  <div class="cc" id="cc" hidden title="Clic per cambiare pagina (tasto C)"></div>
 
   <div class="bottom">
     <div class="stepbar">
@@ -168,6 +170,19 @@
     <button id="btnCloseDone">CHIUDI</button>
     <div id="dTest" hidden><div class="note" id="dTestTxt"></div><button class="go" id="btnUseFtp">USA COME MIA FTP</button></div>
     <div class="hint">Importa il file a mano su Garmin Connect (Importa dati). Nessun upload automatico.</div>
+  </div>
+</div>
+
+<div class="done" id="gameover" hidden>
+  <div class="box">
+    <h2>GAME OVER</h2>
+    <div class="g">
+      <div><span>DISTANZA</span><b id="goKm">-</b></div>
+      <div><span>TEMPO</span><b id="goT">-</b></div>
+    </div>
+    <div class="hint">Hai finito le 3 vite. Il gioco non salva nessun .FIT.</div>
+    <button class="go" id="goAgain">▶ NUOVA PARTITA</button>
+    <button id="goExit">ESCI DAL GIOCO</button>
   </div>
 </div>
 

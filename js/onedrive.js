@@ -1,5 +1,5 @@
 // Sincronizzazione con OneDrive tramite Microsoft Graph, SOLO nella cartella dedicata all'app
-// («Apps/Ciclomulino» creata da Microsoft). Accesso OAuth2 con PKCE direttamente dal browser: nessun server nostro,
+// («Apps/Open Trainer» creata da Microsoft). Accesso OAuth2 con PKCE direttamente dal browser: nessun server nostro,
 // nessun segreto nel codice (il Client ID di una app "Single-page" è pubblico per definizione).
 export const SCOPES = 'Files.ReadWrite.AppFolder offline_access User.Read';
 const AUTH = 'https://login.microsoftonline.com/consumers/oauth2/v2.0';
@@ -112,6 +112,13 @@ export class CloudSync {
   }
   /** salva sul cloud un workout creato/caricato in locale */
   pushWorkout(name, text) { return this.od.write('workouts/' + name.replace(/[^\w.\- ]+/g, '_'), text, 'application/json'); }
+  /** legge un file JSON della cartella dell'app (null se non esiste o non è JSON); max = byte */
+  async readJson(path, max = 1_000_000) {
+    const m = await this.od.meta(path); if (!m) return null;
+    if (m.size > max) throw new Error(path + ' è troppo grande');
+    try { return JSON.parse(await this.od.readText(path)); } catch { return null; }
+  }
+  writeJson(path, obj) { return this.od.write(path, JSON.stringify(obj), 'application/json'); }
   pushPlan(text) { return this.od.write('piano-app.json', text, 'application/json'); }
   pushHistory(json) { return this.od.write('storico.json', json, 'application/json'); }
   pushFtp(json) { return this.od.write('ftp-test.json', json, 'application/json'); }
