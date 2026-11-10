@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 // Disposizione (deterministica) di alberi, case, animali, ostacoli e incroci lungo il tracciato 3D.
 // Funzioni pure: stesso input → stesso risultato (testabili senza Three.js).
 export const CH = 120;                    // lunghezza di un "pezzo" di mondo (m)

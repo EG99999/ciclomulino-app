@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 // Motore della seduta: avanzamento step, setpoint ERG, statistiche, registrazione per il FIT.
 import { Erg, ramp, ERG_CFG } from './erg.js';
 import { speedFor } from './physics.js';

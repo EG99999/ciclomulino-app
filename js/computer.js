@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 // Ciclocomputer simulato: valori disponibili, pagine personalizzabili (4-6 campi) e calcolo di ciò che mostra.
 // Nessun accesso al DOM: tutto è provabile con i test.
 import { normalizedPower } from './history.js';

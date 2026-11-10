@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 import test from 'node:test'; import assert from 'node:assert/strict';
 import { OneDrive, CloudSync, pkceChallenge, randomString, SCOPES } from '../js/onedrive.js';
 
@@ -44,8 +46,13 @@ test('ritorno dal login: scambio del codice, nome account, token salvato', async
 test('state diverso o errore Microsoft → rifiutato', async () => {
   const { od } = await setup(); await od.loginUrl();
   assert.match(await od.handleRedirect('http://localhost:8080/?code=1&state=FALSO'), /errore:.*state/);
-  assert.match(await od.handleRedirect('http://localhost:8080/?error=access_denied&error_description=No'), /errore:No/);
+  assert.equal(await od.handleRedirect('http://localhost:8080/?error=access_denied&error_description=No'), null, 'nessun accesso in corso: un errore confezionato da altri si ignora');
   assert.equal(await od.handleRedirect('http://localhost:8080/'), null);
+  const s1 = new URL(await od.loginUrl()).searchParams.get('state');
+  assert.equal(await od.handleRedirect('http://localhost:8080/?error=access_denied&state=' + s1), 'errore:accesso annullato');
+  const s2 = new URL(await od.loginUrl()).searchParams.get('state');
+  assert.equal(await od.handleRedirect('http://localhost:8080/?error=server_error&error_description=No&state=' + s2), 'errore:accesso non riuscito');
+  await od.loginUrl(); assert.equal(await od.handleRedirect('http://localhost:8080/?error=access_denied&state=ALTRO'), null, 'state diverso: ignorato');
 });
 test('token scaduto → rinnovato da solo; 401 → un nuovo tentativo', async () => {
   const { od, f, now } = await setup(); await login(od);
@@ -78,7 +85,9 @@ test('.FIT grande (300 KB) senza rete: va in coda senza errori e si ricarica ide
 test('login: il codice di ritorno scade dopo 10 minuti e la descrizione errore è solo testo semplice', async () => {
   const { od, now } = await setup(); const url = new URL(await od.loginUrl()), state = url.searchParams.get('state');
   now.t += 11 * 60 * 1000; assert.match(await od.handleRedirect(`http://localhost:8080/?code=1&state=${state}`), /errore:.*scaduto/);
-  assert.match(await od.handleRedirect('http://localhost:8080/?error=x&error_description=' + encodeURIComponent('<img src=x onerror=1> chiama il 0000 https://evil.example')), /^errore:[^<>"\/]{0,100}$/);
+  const st2 = new URL(await od.loginUrl()).searchParams.get('state');
+  const msg = await od.handleRedirect('http://localhost:8080/?error=x&state=' + st2 + '&error_description=' + encodeURIComponent('<img src=x onerror=1> chiama il 0000 https://evil.example'));
+  assert.equal(msg, 'errore:accesso non riuscito', 'il testo dell\'indirizzo non si mostra mai, nemmeno ripulito');
 });
 test('uscita: token, coda dei .FIT e dati del login vengono cancellati', async () => {
   const { od, f, st } = await setup(); await login(od); const cs = new CloudSync(od, { storage: st, onPlan() { }, onWorkouts() { } });

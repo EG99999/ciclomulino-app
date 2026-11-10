@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 // Renderer 3D di Open Trainer: 4 stili (voxel, low-poly retrò, diorama isometrico, HD-2D) sullo stesso mondo.
 // Usa lo stato condiviso G.V (distanza, pendenza, divisa, ostacoli...) e la logica di gioco di scene.js.
 import * as G from './scene.js';

@@ -1,4 +1,6 @@
-import { parsePlan, pickSession, localISODate, DEFAULT_FTP } from './plan.js';
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
+import { parsePlan, pickSession, localISODate, DEFAULT_FTP, LIMITS, validSession } from './plan.js';
 import { Session } from './session.js';
 import { ERG_CFG } from './erg.js';
 import { speedFor } from './physics.js';
@@ -17,7 +19,7 @@ import { MS_CLIENT_ID, BUILD } from './config.js';
 import * as D from './debug.js';
 import { runWizard, runTutorial } from './onboarding.js';
 import { createScreens } from './screens.js';
-import { folderSupported, pickFolder, savedFolder, forgetFolder, folderPermission, FolderSync, appendFile } from './folder.js';
+import { folderSupported, pickFolder, savedFolder, forgetFolder, folderPermission, FolderSync, appendFile, pruneFiles } from './folder.js';
 import { rampPlan, ftp20Plan, testResult, RampWatcher, round5 } from './ftptest.js';
 import { rideFromSession, addRide, loadHistory, summary } from './history.js';
 import { toBlocks } from './creator.js';
@@ -84,14 +86,17 @@ const zoneCol = pct => (ZONES.find(z => pct < z[0]) || ZONES[ZONES.length - 1])[
 
 /* ---------- piano ---------- */
 function showWarnings(r) {
-  const box = $('warnBox'); const lines = [...r.errors.map(e => '✖ ' + e), ...r.warnings.map(w => '⚠ ' + w)];
+  const box = $('warnBox'); const all = [...r.errors.map(e => '✖ ' + e), ...r.warnings.map(w => '⚠ ' + w)], lines = all.length > 30 ? [...all.slice(0, 30), '…e altri ' + (all.length - 30) + ' messaggi'] : all;
   box.hidden = !lines.length; box.classList.toggle('err', !r.ok);
   box.innerHTML = lines.map(esc).join('<br>');
 }
 const planFtp = () => (A.plan && A.plan.ftp) || DEFAULT_FTP;
-const refFtp = () => (S.ftpMode === 'personal' && S.ftp > 0) ? S.ftp : planFtp();
-const ftpSource = () => (S.ftpMode === 'personal' && S.ftp > 0) ? 'la tua FTP personale' : (A.plan ? 'dal piano del coach' : 'valore di riferimento');
-function loadMine() { try { A.mine = JSON.parse(store.get('ciclomulino.mine') || '[]'); } catch { A.mine = []; } }
+const personalFtp = () => S.ftpMode === 'personal' && S.ftp >= 50 && S.ftp <= 600;          // la FTP personale vale solo se plausibile (50-600 W)
+const refFtp = () => personalFtp() ? S.ftp : planFtp();
+const ftpSource = () => personalFtp() ? 'la tua FTP personale' : (A.plan ? 'dal piano del coach' : 'valore di riferimento');
+/** i dati nel localStorage possono essere stati cambiati da un'altra scheda o estensione: si accettano solo oggetti con la forma giusta */
+const SAFE_ID = /^[\w.-]{1,60}$/;
+function loadMine() { try { const a = JSON.parse(store.get('ciclomulino.mine') || '[]'); A.mine = (Array.isArray(a) ? a : []).filter(w => w && typeof w === 'object' && typeof w.id === 'string' && SAFE_ID.test(w.id) && Array.isArray(w.blocks)).slice(0, 100); } catch { A.mine = []; } }
 function mergeCloud(text) {
   const extra = [...A.mine, ...A.cloudSessions]; if (!extra.length) return text;
   try { const o = JSON.parse(text); if (!Array.isArray(o.sessions)) return text; const ids = new Set(o.sessions.map(s => s.id)); o.sessions = o.sessions.concat(extra.filter(s => !ids.has(s.id) && (ids.add(s.id), true))); return JSON.stringify(o); } catch { return text; }
@@ -105,6 +110,7 @@ function rebuildPlan() {
   loadPlanText(text, false, true); if (!keep) A.rawPlan = '';
 }
 function loadPlanText(text, persist = true, internal = false) {
+  if (typeof text !== 'string' || text.length > LIMITS.bytes) { toast('Piano troppo grande (max ' + LIMITS.bytes / 1e6 + ' MB): non lo leggo'); return false; }
   if (!internal && busyRide()) { A.pending = { plan: text, persist }; toast('Seduta in corso: il nuovo piano si applica quando esci'); return false; }
   const r = parsePlan(mergeCloud(text));
   showWarnings(r);
@@ -144,11 +150,11 @@ function syncTrainerFtp() { if (A.trainer && A.trainer.kind === 'sim') A.trainer
 /* ---------- percorsi reali (provincia di Brescia + GPX importati) ---------- */
 async function loadRoutes() {
   const sel = $('routeSel');
-  A.imported = []; try { A.imported = JSON.parse(store.get('ciclomulino.gpx') || '[]'); } catch { A.imported = []; }
+  A.imported = []; try { const a = JSON.parse(store.get('ciclomulino.gpx') || '[]'); for (const j of (Array.isArray(a) ? a : []).slice(0, 6)) { try { A.imported.push(new Route(j).toJSON()); } catch { /* percorso non valido: scartato */ } } } catch { A.imported = []; }
   try { const j = await (await fetch('routes/index.json')).json(); A.routes = j.routes; $('routeAttr').textContent = j.attribution; } catch { A.routes = []; }
   const opts = ['<option value="auto">Generato dal workout (pixel)</option>'];
-  A.routes.forEach(r => opts.push(`<option value="${r.id}">${esc(r.name)} · ${(r.len / 1000).toFixed(0)} km · +${r.gain} m</option>`));
-  A.imported.forEach(r => opts.push(`<option value="gpx:${r.id}">📍 ${esc(r.name)} (importato)</option>`));
+  A.routes.forEach(r => opts.push(`<option value="${esc(r.id)}">${esc(r.name)} · ${(r.len / 1000).toFixed(0)} km · +${r.gain} m</option>`));
+  A.imported.forEach(r => opts.push(`<option value="gpx:${esc(r.id)}">📍 ${esc(r.name)} (importato)</option>`));
   sel.innerHTML = opts.join('');
   const want = store.get('ciclomulino.route') || (A.routes[0] && A.routes[0].id) || 'auto';
   sel.value = [...sel.options].some(o => o.value === want) ? want : 'auto';
@@ -159,11 +165,12 @@ async function applyRoute(id, silent) {
     let route = null;
     if (id.startsWith('gpx:')) { const r = A.imported.find(x => 'gpx:' + x.id === id); if (r) route = new Route(r); }
     else if (id !== 'auto') { const meta = A.routes.find(r => r.id === id); if (meta) route = new Route(await (await fetch(meta.file)).json()); }
+    $('osmAttr').hidden = !(route && !id.startsWith('gpx:'));      // i percorsi inclusi derivano da OpenStreetMap (ODbL): l'attribuzione resta visibile in gara
     A.route = route; G.setRoute(route); if (w3 && w3.ok) w3.setRoute(route); A.lastPlace = '';
-    D.log('route', { id, name: route ? route.name : null, km: route ? D.round(route.len / 1000, 2) : null, gain: route ? route.gain : null, loop: route ? route.loop : null });
+    D.log('route', { id: id.startsWith('gpx:') ? 'gpx' : id, name: route ? (id.startsWith('gpx:') ? '(importato)' : route.name) : null, km: route ? D.round(route.len / 1000, 2) : null, gain: route ? route.gain : null, loop: route ? route.loop : null });
     A.startDist = (route && S.lastPick.route === id && route.places.some(p => p.d === S.lastPick.start)) ? S.lastPick.start : 0;
     const ss = $('startSel'); const seenP = new Set();
-    ss.innerHTML = route ? route.places.filter(p => !seenP.has(p.n) && seenP.add(p.n)).map(p => `<option value="${p.d}">${esc(p.n)} · km ${(p.d / 1000).toFixed(1)}</option>`).join('') : '';
+    ss.innerHTML = route ? route.places.filter(p => !seenP.has(p.n) && seenP.add(p.n)).map(p => `<option value="${Number(p.d)}">${esc(p.n)} · km ${(p.d / 1000).toFixed(1)}</option>`).join('') : '';
     ss.disabled = !route; $('startRow').hidden = !route;
     store.set('ciclomulino.route', id); $('routeSel').value = id;
     $('routeInfo').textContent = route ? `${(route.len / 1000).toFixed(1)} km · +${route.gain} m · ${route.loop ? 'giro ad anello' : 'andata'}` : 'Strada e paesaggi generati dal workout';
@@ -175,7 +182,7 @@ async function importGpx(file) {
   try {
     if (file.size > 10e6) throw new Error('file troppo grande (max 10 MB)');
     const route = routeFromFile(await file.text(), file.name), j = route.toJSON();
-    D.log('gpx.import', { file: file.name, bytes: file.size, km: D.round(route.len / 1000, 2), gain: route.gain });
+    D.log('gpx.import', { ext: (file.name.match(/\.(\w{1,5})$/) || [])[1] || '', bytes: file.size, km: D.round(route.len / 1000, 2), gain: route.gain });
     if (route.len < 500) throw new Error('Percorso più corto di 500 m');
     A.imported = A.imported.filter(r => r.id !== j.id); A.imported.push(j); if (A.imported.length > 6) A.imported.shift();
     if (!store.set('ciclomulino.gpx', JSON.stringify(A.imported))) toast('Percorso non salvabile nel browser (spazio pieno): resta valido finché non chiudi');
@@ -197,7 +204,7 @@ function checkRecovery() {
   const raw = store.get(RUN_KEY); if (!raw) return;
   let o; try { o = JSON.parse(raw); } catch { store.del(RUN_KEY); return; }
   const p = o.plan || (A.plan && A.plan.sessions.find(s => s.id === o.sessId));
-  if (!p || !Array.isArray(p.steps) || !o.snap || !o.snap.rec || o.snap.rec.length < 30) { store.del(RUN_KEY); return; }
+  if (!o || typeof o !== 'object' || !p || !validSession(p, o.ftp >= 50 && o.ftp <= 600 ? o.ftp : A.ftp) || !o.snap || !o.snap.rec || o.snap.rec.length < 30) { store.del(RUN_KEY); return; }
   A.rec = { o, p };
   const min = Math.round(o.snap.t / 60), when = new Date(o.snap.savedAt).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   $('recTitle').textContent = o.done ? 'ULTIMA SEDUTA NON SCARICATA' : 'SEDUTA INTERROTTA';
@@ -395,6 +402,7 @@ function showDone() {
 }
 function useTestFtp() {
   const r = A.testRes; if (!r || r.error) return;
+  if (!(r.ftp >= 50 && r.ftp <= 600)) { toast('FTP stimata fuori da 50-600 W (' + r.ftp + '): non la salvo. Controlla il misuratore e rifai il test'); return; }
   S.ftp = r.ftp; S.ftpMode = 'personal'; saveS();
   const rec = JSON.stringify({ date: new Date().toISOString(), test: r.kind, ftp: r.ftp, basis: r.basis, label: r.label, weightKg: S.weight || null, wkg: S.weight > 0 ? +(r.ftp / S.weight).toFixed(2) : null });
   sendOut('ftp', o => o.pushFtp && o.pushFtp(rec)); toast('FTP personale salvata: ' + r.ftp + ' W'); $('btnUseFtp').hidden = true;
@@ -428,7 +436,7 @@ $('startSel').onchange = e => { if (A.session && A.session.started && !A.session
 $('gpxIn').onchange = async e => { const f = e.target.files[0]; if (f) await importGpx(f); e.target.value = ''; };
 $('bikeSel').onchange = e => setBike(e.target.value);
 $('vol').oninput = e => { Au.setVolume(+e.target.value); S.vol = +e.target.value; saveS(); };
-$('fileIn').onchange = async e => { const f = e.target.files[0]; if (f) loadPlanText(await f.text()); e.target.value = ''; };
+$('fileIn').onchange = async e => { const f = e.target.files[0]; if (f) { if (f.size > LIMITS.bytes) toast('File troppo grande (max ' + LIMITS.bytes / 1e6 + ' MB)'); else loadPlanText(await f.text()); } e.target.value = ''; };
 $('rCad').oninput = e => { if (A.trainer && A.trainer.kind === 'sim') A.trainer.cadBase = +e.target.value; $('rCadV').textContent = e.target.value; };
 $('btnFat').onclick = () => { const t = A.trainer; if (!t || t.kind !== 'sim') return; t.fatigueOn = !t.fatigueOn; $('btnFat').textContent = 'FATICA: ' + (t.fatigueOn ? 'ON' : 'OFF'); $('btnFat').classList.toggle('sel', t.fatigueOn); };
 $('btnPed').onclick = () => { const t = A.trainer; if (!t || t.kind !== 'sim') return; t.pedaling = !t.pedaling; $('btnPed').textContent = 'PEDALO: ' + (t.pedaling ? 'SÌ' : 'NO'); $('btnPed').classList.toggle('sel', !t.pedaling); };
@@ -474,7 +482,7 @@ let dragN = 0;
 addEventListener('dragenter', e => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) { dragN++; $('drop').hidden = false; } });
 addEventListener('dragleave', () => { dragN = Math.max(0, dragN - 1); if (!dragN) $('drop').hidden = true; });
 addEventListener('dragover', e => e.preventDefault());
-addEventListener('drop', async e => { e.preventDefault(); dragN = 0; $('drop').hidden = true; const f = e.dataTransfer.files[0]; if (!f) return; if (/\.(gpx|tcx)$/i.test(f.name)) await importGpx(f); else loadPlanText(await f.text()); });
+addEventListener('drop', async e => { e.preventDefault(); dragN = 0; $('drop').hidden = true; const f = e.dataTransfer.files[0]; if (!f) return; if (/\.(gpx|tcx)$/i.test(f.name)) await importGpx(f); else if (f.size > LIMITS.bytes) toast('File troppo grande (max ' + LIMITS.bytes / 1e6 + ' MB)'); else loadPlanText(await f.text()); });
 
 /* ---------- eventi: seduta e mondo -> log, suoni, messaggi ---------- */
 const evData = e => { const { type, step, ...r } = e; if (typeof r.t === 'number') r.t = D.round(r.t, 2); if (step) r.step = { n: step.n, t: step.t, lo: step.lo, hi: step.hi, d: step.d, dist: step.dist, cad: step.cad || null, grade: step.grade ?? null }; return r; };
@@ -693,7 +701,7 @@ function frameBody(now) {
 let dbgPrev = null, dbgPanelOn = false, dbgPrevRx = { tr: 0, hr: 0 }, dbgRate = { tr: 0, hr: 0 }, dbgIdle = 0, dbgHooked = false, dbgFlushT = 0;
 function dbgStart() {
   if (D.rec.on) return;
-  if (!D.rec.sinks.length) { D.rec.addSink(D.idbSink()); D.rec.addSink(D.folderSink(() => A.folderHandle, h => folderPermission(h, false), appendFile)); }
+  if (!D.rec.sinks.length) { D.rec.addSink(D.idbSink()); D.rec.addSink(D.folderSink(() => A.folderHandle, h => folderPermission(h, false), appendFile, { enabled: () => !!S.debugFolder, prune: h => pruneFiles(h, 'debug', /^ot-\d{4}-\d\d-\d\d_\d{6}-[a-z0-9]+\.jsonl$/, 10) })); }
   dbgPrev = D.settingsSnapshot(S);
   D.rec.start({ build: BUILD, env: D.envInfo(window), settings: dbgPrev, ftp: A.ftp, screen: A.screen, gfx: { ok: !!(w3 && w3.ok), style: S.style } });
   if (!dbgHooked) {
@@ -752,7 +760,7 @@ function dbgPanel() {
 /** una riga di stato al secondo: tutto ciò che entra (watt, cadenza, FC, velocità), cosa decide l'ERG e cosa esce (watt richiesti, comandi) */
 function dbgTick() {
   const s = A.session, tr = A.trainer, hd = A.hrDev, V = G.V, i = A.inp, pn = performance.now(), now = Date.now();
-  const d = { ts: now, scr: A.screen, mode: A.mode, sim: A.sim, x: A.speed, vis: document.visibilityState === 'visible' ? 1 : 0, fps: A.fps, ms: D.round(A.drawMs, 1), w3: !!(w3 && w3.ok) };
+  const d = { scr: A.screen, mode: A.mode, sim: A.sim, x: A.speed, vis: document.visibilityState === 'visible' ? 1 : 0, fps: A.fps, ms: D.round(A.drawMs, 1), w3: !!(w3 && w3.ok) };
   d.in = { p: Math.round(i.power), cad: D.round(i.cad, 1), hr: i.hr, age: i.lastData ? Math.round(pn - i.lastData) : null, kmh: D.round(realKmh(), 1), src: realSource(), csc: D.round(A.real.csc, 1), ftms: D.round(A.real.ftms, 1) };
   if (tr) { const b = tr.stats; d.tr = { k: tr.kind, on: !!tr.connected, rx: dbgRate.tr, tot: b ? b.rx : null, last: b && b.last ? now - b.last : null, wr: b ? b.wr : null, wrErr: b ? b.wrErr : null, supp: b ? b.supp : null, lastW: tr.lastW, simUn: !!tr.simUnsupported, csc: !!tr.hasCsc }; }
   if (hd) d.hr = { k: hd.kind, on: !!hd.connected, rx: dbgRate.hr, last: hd.stats && hd.stats.last ? now - hd.stats.last : null };
@@ -798,7 +806,8 @@ function planFromSync(text) {
 }
 function workoutsFromSync(items) {
   A.cloudSessions = [];
-  for (const it of items) { try { const o = JSON.parse(it.text); if (Array.isArray(o.sessions)) A.cloudSessions.push(...o.sessions); else if (Array.isArray(o.blocks)) A.cloudSessions.push({ id: o.id || 'ws-' + it.name, title: o.title || it.name.replace(/\.json$/i, ''), ...o }); } catch { /* file non valido: lo salto */ } }
+  for (const it of items.slice(0, LIMITS.files)) { try { if (typeof it.text !== 'string' || it.text.length > LIMITS.bytes) continue; const o = JSON.parse(it.text); if (Array.isArray(o.sessions)) A.cloudSessions.push(...o.sessions.slice(0, 50)); else if (Array.isArray(o.blocks)) A.cloudSessions.push({ id: o.id || 'ws-' + it.name, title: o.title || it.name.replace(/\.json$/i, ''), ...o }); } catch { /* file non valido: lo salto */ } }
+  A.cloudSessions = A.cloudSessions.slice(0, LIMITS.sessions);
   rebuildPlan();
 }
 function makeCloud() {
@@ -1008,7 +1017,7 @@ const api = {
   exportCsv: () => { const rows = loadHistory(shim); const head = 'data;seduta;durata_s;km;w_medi;np;w_kg;kj;fc_media\n'; download('open-trainer-storico.csv', head + rows.map(r => [new Date(r.when).toISOString().slice(0, 16).replace('T', ' '), '"' + csvSafe(r.title) + '"', r.durS, r.km, r.avgP, r.np, r.wkg ?? '', r.kj, r.hr].join(';')).join('\n'), 'text/csv'); },
   exportSettings: () => download('open-trainer-impostazioni.json', JSON.stringify({ ...S, clientId: '' }, null, 1), 'application/json'),
   importSettings: async f => { try { if (f.size > 200000) throw new Error('file troppo grande'); const c = sanitizeSettings(JSON.parse(await f.text()), S); Object.assign(S, c, { clientId: c.clientId || S.clientId }); saveS(); applySettings(); toast('Impostazioni importate'); } catch (e) { toast('File non valido: ' + e.message); } },
-  wipe: async () => { if (confirm('Cancellare impostazioni, storico, workout, piano, accessi (Microsoft, cartella) e copie salvate su questo computer? (I file nella cartella OneDrive non vengono toccati)')) { for (const k of Object.keys(localStorage)) if (k.startsWith('ciclomulino.')) localStorage.removeItem(k); try { sessionStorage.clear(); } catch { /* ignora */ } try { await forgetFolder(); } catch { /* ignora */ } try { for (const k of await caches.keys()) await caches.delete(k); } catch { /* ignora */ } location.reload(); } },
+  wipe: async () => { if (confirm('Cancellare impostazioni, storico, workout, piano, accessi (Microsoft, cartella), log di debug nel browser e copie salvate su questo computer? (I file nella cartella OneDrive, compresi eventuali log di debug, non vengono toccati)')) { try { await D.rec.stop('cancellazione dati'); await D.idbClear(); } catch { /* ignora */ } for (const k of Object.keys(localStorage)) if (k.startsWith('ciclomulino.')) localStorage.removeItem(k); try { sessionStorage.clear(); } catch { /* ignora */ } try { await forgetFolder(); } catch { /* ignora */ } try { for (const k of await caches.keys()) await caches.delete(k); } catch { /* ignora */ } location.reload(); } },
   testSound: () => { Au.unlock(); Au.horn(0, 1); setTimeout(() => Au.chirp(0), 900); },
   cloudUi, folderUi
 };

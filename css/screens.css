@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (C) 2026 Gatti Elia */
 /* Schermate di Open Trainer: home, scelta, collegamento, impostazioni, storico, creatore.
    Sfondo = il gioco che continua dietro, sfocato. */
 body[data-screen]:not([data-screen=ride]):not([data-screen=tut]) .topbar,
@@ -93,3 +95,6 @@ body[data-screen=tut] #scr { display: none; }
 .done .g b { font-weight: 400; } #dTest { display: grid; gap: 8px; border: 2px solid var(--acc); padding: 8px; } #dTest[hidden] { display: none; }
 .ccp { border: 3px solid var(--line); padding: 8px; margin: 6px 0; display: grid; gap: 6px; } .ccp b { font-family: var(--px); font-size: 8px; color: var(--acc); font-weight: 400; }
 .ccsel { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; } .ccsel select { width: 100%; font-size: 17px; }
+
+.ver a { color: inherit; text-decoration: underline; pointer-events: auto; }
+.hint a, .note a { color: var(--acc, #8ab4ff); }

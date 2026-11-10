@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 // Test FTP integrati: ramp test e test da 20'. Tutti i watt sono calcolati dalla FTP di riferimento (mai fissi).
 export const round5 = v => Math.round(v / 5) * 5;
 

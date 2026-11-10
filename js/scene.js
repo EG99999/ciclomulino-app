@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 // Mondo pixel: strada pseudo-3D con pendenze e curve, 4 ambienti che cambiano da soli,
 // traffico, pedoni, animali, uccelli, incroci, ciclista con inclinazione e gesti, visuale in prima persona.
 import { gradeOf } from './plan.js';

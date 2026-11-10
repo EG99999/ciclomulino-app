@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 import test from 'node:test'; import assert from 'node:assert/strict';
 import { Erg } from '../js/erg.js';
 const run = (e, sec, cad, active = true) => { const ev = []; for (let i = 0; i < sec * 10; i++) ev.push(...e.update(0.1, cad, active)); return ev; };

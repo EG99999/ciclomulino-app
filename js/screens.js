@@ -1,6 +1,9 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 // Schermate di Open Trainer: home, scelta attività, collegamento, impostazioni, storico, creatore di workout.
 import { drawLogo } from './logo.js';
 import { TYPES, newStep, newRep, toSession, fromBlocks, totalSeconds, check } from './creator.js';
+import { REPO_URL, BUILD } from './config.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -33,7 +36,7 @@ export function createScreens(api) {
       <div class="logowrap"><canvas id="logoCv" aria-label="Open Trainer"></canvas></div>
       <div class="homeRow"><button class="mc big" id="hGo">VAI</button><button class="mc sq" id="hSet" title="Impostazioni" aria-label="Impostazioni">⚙</button></div>
       <div class="homeSub"><button class="mc small" data-go="history">STORICO</button><button class="mc small" id="hTut">TUTORIAL</button></div>
-      <div class="ver">Open Trainer · versione di prova${api.S.name ? ' · ciao ' + esc(api.S.name) : ''}</div></div>`;
+      <div class="ver">Open Trainer · versione di prova${api.S.name ? ' · ciao ' + esc(api.S.name) : ''} · <a href="${REPO_URL}" target="_blank" rel="noopener noreferrer">codice sorgente (AGPL-3.0)</a></div></div>`;
     const draw = () => { const cv = $('logoCv'); if (cv) drawLogo(cv, Math.min(14, Math.max(5, Math.floor(Math.min(innerWidth * 0.82, 880) / 44)))); };
     draw(); if (onResize) removeEventListener('resize', onResize); onResize = draw; addEventListener('resize', onResize);
     $('hGo').onclick = () => show('select'); $('hSet').onclick = () => show('settings'); $('hTut').onclick = () => api.startTutorial(); wire();
@@ -149,13 +152,15 @@ export function createScreens(api) {
       grafica: () => `<h2>Grafica</h2>${fld.sel('style', 'Stile', [['voxel', 'Voxel (blocchi 3D)'], ['ps1', 'Low-poly retrò (PlayStation 1)'], ['iso', 'Diorama isometrico'], ['hd2d', 'HD-2D (sprite in 3D)']])}${fld.sel('quality', 'Qualità', [[3, 'Alta (consigliata)'], [2, 'Media'], [1, 'Veloce (PC lenti)']])}<div class="note">Se il PC fa fatica abbassa la qualità o scegli «Pixel 2D». Se il browser non supporta il 3D (WebGL) l'app usa da sola il Pixel 2D.</div>`,
       dati: () => `<h2>Dati e sincronizzazione</h2><p>Il piano entra e i .FIT, lo storico e i test escono dalla cartella che scegli (la tua cartella OneDrive «Open Trainer»: ci pensa OneDrive a sincronizzare).</p><div id="folderSlot"></div><div id="cloudSlot"></div>
         <h2>Impostazioni</h2><div class="rowb"><button class="mc small" data-act="expSet">ESPORTA</button><label class="mc small" for="impSet">IMPORTA</label><input type="file" id="impSet" accept=".json" hidden><button class="mc small danger" data-act="wipe">CANCELLA I DATI LOCALI</button></div>`,
-      debug: () => `<h2>Debug</h2>${fld.chk('debug', 'Registra tutto (scatola nera)', 'Salva ogni dato che entra e che esce: pacchetti Bluetooth grezzi, comandi al trainer, logica ERG, tasti, errori, prestazioni. Resta sul tuo computer: non viene inviato a nessuno.')}
+      debug: () => `<h2>Debug</h2>${fld.chk('debug', 'Registra tutto (scatola nera)', 'Salva nel browser ogni dato che entra e che esce: pacchetti Bluetooth grezzi, comandi al trainer, logica ERG, tasti, errori, prestazioni. Contiene watt, cadenza, FC, tempi, nomi dei dispositivi e dei piani, versione del browser e scheda video. Non contiene password né token. Non viene inviato a nessuno.')}${fld.chk('debugFolder', 'Salva il log anche nella cartella dati', 'Nella sottocartella «debug» (restano gli ultimi 10 file). Se la cartella è dentro OneDrive il log viene caricato su Microsoft e copiato sugli altri tuoi computer.')}
         <div class="note" id="dbgStat">…</div>
         <div class="rowb"><button class="mc small" data-act="dbgSave">SCARICA IL LOG</button><button class="mc small" data-act="dbgMark">SEGNA UN PUNTO</button><button class="mc small" data-act="dbgPanel">PANNELLO LIVE</button></div>
         <label class="f">Nota per il log<input type="text" id="dbgNote" maxlength="200" placeholder="es. il carico ha fatto uno strappo a metà"></label><div class="rowb"><button class="mc small" data-act="dbgNoteAdd">AGGIUNGI LA NOTA</button></div>
         <h2>Log salvati su questo computer</h2><div id="dbgRuns" class="note">…</div><div class="rowb"><button class="mc small danger" data-act="dbgClear">CANCELLA I LOG SALVATI</button></div>
-        <p class="hint">Se hai collegato la cartella dati, il log viene scritto anche nella sottocartella «debug». In gara: <b>B</b> segna un punto nel log, <b>I</b> apre il pannello live con i pacchetti Bluetooth.</p>`,
-      aiuto: () => `<h2>Aiuto</h2><div class="rowb"><button class="mc small" data-act="tut">TUTORIAL</button><button class="mc small" data-act="wiz">CONFIGURAZIONE INIZIALE</button></div><p class="hint">Tasti in gara: Spazio avvia/pausa · V vista · M menu · F schermo intero · N suoni.</p>`
+        <p class="hint">Prima di allegare un log a una segnalazione pubblica, aprilo e controlla che non contenga nulla di tuo che non vuoi mostrare. In gara: <b>B</b> segna un punto nel log, <b>I</b> apre il pannello live con i pacchetti Bluetooth.</p>`,
+      aiuto: () => `<h2>Aiuto</h2><div class="rowb"><button class="mc small" data-act="tut">TUTORIAL</button><button class="mc small" data-act="wiz">CONFIGURAZIONE INIZIALE</button></div><p class="hint">Tasti in gara: Spazio avvia/pausa · V vista · M menu · F schermo intero · N suoni · C pagina del ciclocomputer · B segna un punto nel log · I pannello debug.</p>
+        <h2>Informazioni</h2><p class="hint">Open Trainer è software libero, licenza GNU AGPL-3.0 o successiva, © 2026 Gatti Elia. Versione ${esc(BUILD)}.<br>Codice sorgente: <a href="${REPO_URL}" target="_blank" rel="noopener noreferrer">${esc(REPO_URL.replace('https://', ''))}</a><br><a href="${REPO_URL}/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">Licenza</a> · <a href="${REPO_URL}/blob/main/NOTICE.md" target="_blank" rel="noopener noreferrer">Licenze di terzi e marchi</a> · <a href="${REPO_URL}/blob/main/SECURITY.md" target="_blank" rel="noopener noreferrer">Segnalare un problema di sicurezza</a><br>Il programma è fornito «così com'è», senza alcuna garanzia. Non è affiliato né approvato da Garmin, Zwift, Elite, Microsoft o dai marchi di biciclette citati.<br>Percorsi inclusi: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a> (licenza ODbL) · quote EU-DEM © Copernicus.</p>
+        <h2>Privacy</h2><p class="hint">Nessun account nostro, nessun server nostro, nessuna statistica, nessun cookie di tracciamento. Impostazioni, storico e percorsi importati restano nel tuo browser. Se scegli una cartella dati, i file entrano ed escono da lì. Se accedi con Microsoft, impostazioni (compresi nome, peso, altezza e FTP), storico e percorsi importati (un GPX può rivelare dove abiti) vengono salvati nella cartella «Apps/Open Trainer» del tuo OneDrive e copiati sugli altri tuoi computer; l'app legge anche il nome del tuo account Microsoft e non vede né salva la tua password. Il registro di debug è spento di serie. Il sito è servito da GitHub Pages (vede il tuo indirizzo IP, come ogni sito).</p>`
     };
     root.innerHTML = `<div class="panel wide"><h1>IMPOSTAZIONI</h1><div class="split set"><div class="tabs">${TABS.map(t => `<button class="mc tab ${t[0] === tab ? 'sel' : ''}" data-tab="${t[0]}">${t[1]}</button>`).join('')}</div><div class="pane" id="setPane">${body[tab]()}</div></div>
       <div class="nav">${back('home', '← FATTO')}<span></span></div></div>`;
@@ -169,7 +174,7 @@ export function createScreens(api) {
   async function dbgRefresh() {
     const el = $('dbgStat'); if (!el) return;
     const st = api.dbgStats(), fm = n => (n > 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.round(n / 1e3) + ' kB');
-    el.innerHTML = st.on ? `<b>● In registrazione</b> · ${st.lines} righe · ${fm(st.bytes)} · punti segnati: ${st.marks}<br>Salvataggio: ${st.sinks.map(k => esc(k.name) + ': ' + (k.dead ? 'ERRORE (' + esc(k.err) + ')' : k.sent ? 'ok' : k.name === 'cartella' ? 'non collegata o da riautorizzare (Impostazioni → Dati)' : 'in attesa')).join(' · ') || 'solo memoria'}` : 'Registrazione spenta.';
+    el.innerHTML = st.on ? `<b>● In registrazione</b> · ${st.lines} righe · ${fm(st.bytes)} · punti segnati: ${st.marks}<br>Salvataggio: ${st.sinks.map(k => esc(k.name) + ': ' + (k.dead ? 'ERRORE (' + esc(k.err) + ')' : k.sent ? 'ok' : k.name === 'cartella' ? (api.S.debugFolder ? 'non collegata o da riautorizzare (Impostazioni → Dati)' : 'spenta (la accendi qui sopra)') : 'in attesa')).join(' · ') || 'solo memoria'}` : 'Registrazione spenta.';
     const runs = await api.dbgRuns(), box = $('dbgRuns'); if (!box) return;
     box.innerHTML = runs.length ? runs.map(r => `<div class="rowb" style="align-items:center;justify-content:space-between"><span>${esc(new Date(r.start).toLocaleString('it-IT'))} · ${r.lines} righe${st.on && r.runId === st.runId ? ' · in corso' : ''}</span><button class="mc small" data-run="${esc(r.runId)}">SCARICA</button></div>`).join('') : 'Nessun log salvato nel browser.';
     box.querySelectorAll('[data-run]').forEach(b => { b.onclick = () => api.dbgRun(b.dataset.run); });
@@ -180,7 +185,7 @@ export function createScreens(api) {
     const pane = $('setPane'); if (!pane) return;
     pane.querySelectorAll('[data-k]').forEach(el => {
       const k = el.dataset.k; if (k === '__brand') { el.onchange = () => { const first = api.bikes().find(b => b.name.split(' ')[0] === el.value); if (first) { api.S.bike = first.id; apply('bike'); settings(); } }; return; }
-      const h = () => { let v = el.type === 'checkbox' ? el.checked : el.dataset.t === 'n' ? (el.value === '' ? 0 : +el.value) : el.value; if (k === 'bikeColor.deep' || k === 'quality') v = +v; if (k === 'wheelMm') v = Math.min(2600, Math.max(1000, +v || 2136)); setPath(api.S, k, v); const lab = $('v_' + k.replace('.', '_')); if (lab) lab.textContent = v; apply(k); preview(); wkg(); };
+      const h = () => { let v = el.type === 'checkbox' ? el.checked : el.dataset.t === 'n' ? (el.value === '' ? 0 : +el.value) : el.value; if (k === 'bikeColor.deep' || k === 'quality') v = +v; if (k === 'wheelMm') v = Math.min(2600, Math.max(1000, +v || 2136)); if (k === 'ftp') v = v > 0 ? Math.min(600, Math.max(50, v)) : 0; if (k === 'weight') v = Math.min(300, Math.max(0, v)); if (k === 'height' || k === 'hrMax') v = Math.min(250, Math.max(0, v)); setPath(api.S, k, v); const lab = $('v_' + k.replace('.', '_')); if (lab) lab.textContent = v; apply(k); preview(); wkg(); };
       el.addEventListener(el.type === 'range' || el.type === 'color' || el.type === 'text' || el.type === 'number' ? 'input' : 'change', h);
     });
     pane.querySelectorAll('[data-sw]').forEach(b => b.onclick = () => { setPath(api.S, b.dataset.sw, b.dataset.v); apply(b.dataset.sw); settings(); });
@@ -261,7 +266,7 @@ export function createScreens(api) {
       $('wkCancel').onclick = () => { edit = null; show('select'); };
       $('wkSave').onclick = () => { const raw = toSession({ id: E.id || undefined, title: E.title.trim(), notes: E.notes, nodes: E.nodes }); api.saveWorkout(raw); edit = null; selKind = 'plan'; api.S.lastPick.sessId = raw.id; api.saveS(); show('select'); };
       $('wkExp').onclick = () => api.exportWorkout(toSession({ id: E.id || undefined, title: E.title || 'workout', notes: E.notes, nodes: E.nodes }));
-      $('wkImp').onchange = async e => { const f = e.target.files[0]; if (!f) return; try { const o = JSON.parse(await f.text()), s = Array.isArray(o.sessions) ? o.sessions[0] : o; E.nodes = fromBlocks(s.blocks); E.title = s.title || E.title; E.notes = s.notes || ''; draw(); } catch (x) { api.toast('File non valido: ' + x.message); } };
+      $('wkImp').onchange = async e => { const f = e.target.files[0]; if (!f) return; try { if (f.size > 1000000) throw new Error('file troppo grande'); const o = JSON.parse(await f.text()), s = Array.isArray(o.sessions) ? o.sessions[0] : o; E.nodes = fromBlocks(s.blocks); E.title = typeof s.title === 'string' && s.title.trim() ? s.title.replace(/[\u0000-\u001f]/g, '').slice(0, 40) : E.title; E.notes = typeof s.notes === 'string' ? s.notes.replace(/[\u0000-\u0009\u000b-\u001f]/g, '').slice(0, 600) : ''; draw(); } catch (x) { api.toast('File non valido: ' + x.message); } };
     };
     draw();
   }

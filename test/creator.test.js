@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 import test from 'node:test'; import assert from 'node:assert/strict';
 import { newStep, newRep, toBlocks, fromBlocks, toSession, totalSeconds, check } from '../js/creator.js';
 import { parsePlan } from '../js/plan.js';

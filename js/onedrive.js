@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 // Sincronizzazione con OneDrive tramite Microsoft Graph, SOLO nella cartella dedicata all'app
 // («Apps/Open Trainer» creata da Microsoft). Accesso OAuth2 con PKCE direttamente dal browser: nessun server nostro,
 // nessun segreto nel codice (il Client ID di una app "Single-page" è pubblico per definizione).
@@ -9,7 +11,11 @@ const TOKEN_KEY = 'ciclomulino.ms', PKCE_KEY = 'ciclomulino.pkce', QUEUE_KEY = '
 const b64url = bytes => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 export function randomString(n = 48) { const a = new Uint8Array(n); crypto.getRandomValues(a); return b64url(a).slice(0, n); }
 export async function pkceChallenge(verifier) { return b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))); }
-const encPath = p => p.split('/').map(encodeURIComponent).join('/');
+// ogni segmento è codificato e non può essere vuoto, «.» o «..» (il browser li normalizza prima dell'invio e uscirebbero dalla cartella voluta)
+const encPath = p => p.split('/').map(s => { if (s === '' || s === '.' || s === '..') throw new Error('Percorso OneDrive non valido'); return encodeURIComponent(s); }).join('/');
+/** nome di file sicuro per la cartella dell'app: stesso criterio per scrivere e per cancellare */
+const safeName = n => { const s = String(n).replace(/[^\w.\- ]+/g, '_'); if (!s || /^\.+$/.test(s)) throw new Error('Nome di file non valido'); return s; };
+const MAX_PLAN = 2_000_000, MAX_WORKOUT = 500_000, MAX_WORKOUTS = 100;      // limiti di lettura: un file enorme in cartella non deve bloccare l'app a ogni sincronizzazione
 
 function toB64(bytes) { let s = ''; for (let i = 0; i < bytes.length; i += 8192) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192)); return btoa(s); }
 export class OneDrive {
@@ -37,7 +43,10 @@ export class OneDrive {
     if (!code && !err) return null;
     let saved = null; try { saved = JSON.parse(this.session.getItem(PKCE_KEY) || 'null'); } catch { /* ignora */ }
     this.session.removeItem(PKCE_KEY);
-    if (err) return 'errore:' + String(u.searchParams.get('error_description') || err).replace(/[^\p{L}\p{N} .,:;()_'-]/gu, '').slice(0, 100);   // solo testo semplice: l'indirizzo può essere stato confezionato da altri
+    if (err) {
+      if (!saved || saved.state !== u.searchParams.get('state')) return null;      // nessun accesso in corso (o state diverso): l'indirizzo è stato confezionato da altri, lo ignoro
+      return 'errore:' + (err === 'access_denied' ? 'accesso annullato' : 'accesso non riuscito');      // frasi fisse: il testo che arriva nell'indirizzo non si mostra mai
+    }
     if (!saved || saved.state !== u.searchParams.get('state')) return 'errore:risposta di accesso non valida (state diverso)';
     if (saved.ts && this.now() - saved.ts > 600000) return 'errore:accesso scaduto (più di 10 minuti): riprova';
     await this._token({ grant_type: 'authorization_code', code, redirect_uri: this.redirectUri, code_verifier: saved.verifier, scope: SCOPES });
@@ -45,8 +54,10 @@ export class OneDrive {
     return 'ok';
   }
   async _token(body) {
+    const gen = this._gen || 0;
     const r = await this.fetchFn(`${AUTH}/token`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: this.clientId, ...body }).toString() });
     const j = await r.json().catch(() => ({}));
+    if (gen !== (this._gen || 0)) throw new Error('Accesso annullato');      // «Esci» premuto mentre il rinnovo era in corso: i token non si risalvano
     if (!r.ok || !j.access_token) { if (j.error === 'invalid_grant') { this.tok = null; this._save(); } throw new Error('Microsoft: ' + (j.error_description || j.error || r.status).toString().split('\r')[0].slice(0, 160)); }
     this.tok = { access: j.access_token, exp: this.now() + (j.expires_in - 60) * 1000, refresh: j.refresh_token || (this.tok && this.tok.refresh), account: this.tok && this.tok.account };
     this._save(); return this.tok.access;
@@ -56,7 +67,7 @@ export class OneDrive {
     if (this.tok.access && this.now() < this.tok.exp) return this.tok.access;
     return this._token({ grant_type: 'refresh_token', refresh_token: this.tok.refresh, scope: SCOPES });
   }
-  logout() { this.tok = null; this._save(); for (const k of [ETAG_KEY, QUEUE_KEY, PKCE_KEY]) { try { this.storage.removeItem(k); this.session.removeItem(k); } catch { /* ignora */ } } }
+  logout() { this._gen = (this._gen || 0) + 1; this.tok = null; this._save(); for (const k of [ETAG_KEY, QUEUE_KEY, PKCE_KEY]) { try { this.storage.removeItem(k); this.session.removeItem(k); } catch { /* ignora */ } } }
 
   /** chiamata a Graph (path relativo a /v1.0); riprova una volta se il token è scaduto */
   async api(path, { method = 'GET', body, headers = {}, raw = false, okStatuses = [] } = {}) {
@@ -89,8 +100,9 @@ export class CloudSync {
     const out = { plan: false, workouts: 0 };
     this.status('Sincronizzo con OneDrive…');
     const m = await this.od.meta('piano-app.json');
-    if (m) { if (force || this._etags().plan !== m.eTag) { const text = await this.od.readText('piano-app.json'); this._setEtag('plan', m.eTag); this.onPlan(text, m); out.plan = true; } }
-    const files = (await this.od.list('workouts')).filter(f => /\.json$/i.test(f.name));
+    if (m && m.size > MAX_PLAN) this.status('OneDrive: piano-app.json è troppo grande (max 2 MB): lo ignoro');
+    else if (m) { if (force || this._etags().plan !== m.eTag) { const text = await this.od.readText('piano-app.json'); this._setEtag('plan', m.eTag); this.onPlan(text, m); out.plan = true; } }
+    const files = (await this.od.list('workouts')).filter(f => /\.json$/i.test(f.name) && !(f.size > MAX_WORKOUT)).slice(0, MAX_WORKOUTS);
     if (files.length && (force || files.map(f => f.name + f.eTag).join('|') !== this._etags().workouts)) {
       const items = []; for (const f of files) { try { items.push({ name: f.name, text: await this.od.readText('workouts/' + f.name) }); } catch { /* file illeggibile: lo salto */ } }
       this._setEtag('workouts', files.map(f => f.name + f.eTag).join('|')); this.onWorkouts && this.onWorkouts(items); out.workouts = items.length;
@@ -111,7 +123,7 @@ export class CloudSync {
     this._setQueue(rest); return q.length - rest.length;
   }
   /** salva sul cloud un workout creato/caricato in locale */
-  pushWorkout(name, text) { return this.od.write('workouts/' + name.replace(/[^\w.\- ]+/g, '_'), text, 'application/json'); }
+  pushWorkout(name, text) { return this.od.write('workouts/' + safeName(name), text, 'application/json'); }
   /** legge un file JSON della cartella dell'app (null se non esiste o non è JSON); max = byte */
   async readJson(path, max = 1_000_000) {
     const m = await this.od.meta(path); if (!m) return null;
@@ -122,5 +134,5 @@ export class CloudSync {
   pushPlan(text) { return this.od.write('piano-app.json', text, 'application/json'); }
   pushHistory(json) { return this.od.write('storico.json', json, 'application/json'); }
   pushFtp(json) { return this.od.write('ftp-test.json', json, 'application/json'); }
-  removeWorkout(name) { return this.od.api(`/me/drive/special/approot:/workouts/${encodeURIComponent(name)}`, { method: 'DELETE', okStatuses: [404] }); }
+  removeWorkout(name) { return this.od.api(`/me/drive/special/approot:/workouts/${encodeURIComponent(safeName(name))}`, { method: 'DELETE', okStatuses: [404] }); }
 }

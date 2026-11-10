@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 // Suoni sintetizzati con Web Audio (nessun file): beep seduta, clacson, vento, uccelli, salto, buca, applausi.
 let ctx = null, master = null, windGain = null, windFilter = null, noiseBuf = null;
 export const AUDIO = { on: true, vol: 0.7, fast: false, ambient: true };

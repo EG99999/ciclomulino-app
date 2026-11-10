@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 // Simulatore integrato di trainer + FC (stessa interfaccia dei dispositivi BLE, più tick(dt)).
 import { speedFor } from './physics.js';
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 import test from 'node:test'; import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { buildFit, crc16, fitFileName } from '../js/fit.js';
@@ -35,5 +37,5 @@ test('FIT: struttura valida, 1 record/s, 1 lap per step, session, activity', () 
 });
 test('FIT: senza dati lancia errore; nome file ordinato', () => {
   assert.throws(() => buildFit({ records: [] }), /Nessun dato/);
-  assert.match(fitFileName({ startedAt: new Date(2026, 10, 16, 6, 0).getTime() }, "Ciclomulino VO2max 5x3'"), /^20261116-0600-ciclomulino-vo2max-5x3\.fit$/);
+  assert.match(fitFileName({ startedAt: new Date(2026, 10, 16, 6, 0).getTime() }, "Ciclomulino VO2max 5x3'"), /^20261116-060000-ciclomulino-vo2max-5x3\.fit$/);
 });

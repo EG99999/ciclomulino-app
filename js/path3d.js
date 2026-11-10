@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 // Tracciato del mondo 3D: da un percorso reale (GPX/OpenStreetMap) oppure generato.
 // Coordinate: x = -est (così una curva a destra appare a destra con la camera che guarda +z), z = nord, y = quota.
 // Distanze in metri lungo la strada. Nessuna dipendenza da Three.js (testabile in Node).

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 import test from 'node:test'; import assert from 'node:assert/strict';
 import { parseCsc, WheelSpeed, parseIndoorBikeData } from '../js/ble.js';
 import { FIELDS, FIELD_IDS, DEFAULT_PAGES, parsePages, serializePages, cleanPages, readFields, CycloTracker } from '../js/computer.js';

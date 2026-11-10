@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 // Velocità virtuale da fisica (CLAUDE.md): massa 92 kg, CdA 0.32, Crr 0.004, rho 1.2, rendimento 0.97.
 export const PHYS = { mass: 92, cda: 0.32, crr: 0.004, rho: 1.2, eta: 0.97, g: 9.81 };
 

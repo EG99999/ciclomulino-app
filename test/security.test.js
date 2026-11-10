@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 // Test di sicurezza: file malevoli o sbagliati non devono bloccare l'app, iniettare codice o mandare watt assurdi al trainer.
 import test from 'node:test'; import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
@@ -17,13 +19,13 @@ test('impostazioni importate: nessun testo pericoloso arriva alle schermate', ()
     kit: { jersey: EVIL, jersey2: 'red', text: '<b>"x"</b>', emblem: EVIL, img: 'http://evil.example/p.png', pattern: EVIL, emblemColor: 'url(javascript:1)' },
     bikeColor: { frame: EVIL, accent: '#12345', deep: 99 }, lastPick: { kind: EVIL, route: '../../x', sessId: EVIL, start: -5 }, extra: 1 }));
   const c =sanitizeSettings(JSON.parse('{"__proto__":{"polluted":1},"constructor":{"x":1},"weight":' + JSON.stringify(EVIL) + ',"ftp":1e12,"vol":1e9,"name":' + JSON.stringify(EVIL + 'ok') + ',"style":"pixel2d","extra":1}'));
-  assert.equal(c.weight, DEFAULTS.weight); assert.equal(c.ftp, 2000); assert.equal(c.vol, 1); assert.equal(c.style, 'voxel'); assert.equal(c.extra, undefined);
+  assert.equal(c.weight, DEFAULTS.weight); assert.equal(c.ftp, 600); assert.equal(c.vol, 1); assert.equal(c.style, 'voxel'); assert.equal(c.extra, undefined);
   assert.ok(!/[<>"]/.test(c.name)); assert.equal(({}).polluted, undefined); assert.equal(Object.getPrototypeOf(c), Object.prototype);
   const d = sanitizeSettings(o);
   assert.equal(d.weight, DEFAULTS.weight); assert.equal(d.hrMax, DEFAULTS.hrMax); assert.equal(d.clientId, ''); assert.equal(d.planMode, DEFAULTS.planMode);
   assert.equal(d.kit.jersey, DEFAULTS.kit.jersey); assert.equal(d.kit.jersey2, DEFAULTS.kit.jersey2); assert.equal(d.kit.emblemColor, DEFAULTS.kit.emblemColor);
   assert.ok(!/[<>"&]/.test(d.kit.text)); assert.equal(d.kit.emblem, DEFAULTS.kit.emblem); assert.equal(d.kit.pattern, DEFAULTS.kit.pattern); assert.equal(d.kit.img, null);
-  assert.equal(d.bikeColor.frame, ''); assert.equal(d.bikeColor.accent, ''); assert.equal(d.bikeColor.deep, 1);
+  assert.equal(d.bikeColor.frame, ''); assert.equal(d.bikeColor.accent, ''); assert.equal(d.bikeColor.deep, 2);     // massimo 2 = «Lenticolare»: la UI lo offre
   assert.equal(d.lastPick.kind, DEFAULTS.lastPick.kind); assert.equal(d.lastPick.route, ''); assert.equal(d.lastPick.sessId, ''); assert.equal(d.lastPick.start, 0);
   // nessuna stringa, in nessun punto, contiene i simboli con cui si chiude un attributo HTML o si apre un tag
   const strings = []; (function walk(v) { if (typeof v === 'string') strings.push(v); else if (v && typeof v === 'object') Object.values(v).forEach(walk); })(d);
@@ -63,7 +65,7 @@ test('piano: un file con ripetizioni enormi non blocca il browser', () => {
   assert.equal(r.sessions.length, 0); assert.ok(r.errors.length); assert.ok(performance.now() - t0 < 500);
   const nest = { t: 'interval', d: 1, pct: [0.5, 0.6] }; let b = [nest]; for (let i = 0; i < 4; i++) b = [{ rep: 200, steps: b }];
   const t1 = performance.now(); const r2 = parsePlan({ ftp: 271, sessions: [{ id: 'b', title: 'y', blocks: b }] });
-  assert.ok(performance.now() - t1 < 1000, 'tempo di lettura'); assert.equal(r2.sessions.length, 0); assert.match(r2.errors.join(' '), /più di|troppe/);
+  assert.ok(performance.now() - t1 < 1000, 'tempo di lettura'); assert.equal(r2.sessions.length, 0); assert.match(r2.errors.join(' '), /più di|troppe|troppi/);
   let empty = []; for (let i = 0; i < 6; i++) empty = [{ rep: 200, steps: empty.length ? empty : [{ rep: 1, steps: [] }] }];
   const t2 = performance.now(); parsePlan({ ftp: 271, sessions: [{ id: 'c', title: 'z', blocks: empty }] }); assert.ok(performance.now() - t2 < 1000, 'cicli a vuoto');
 });

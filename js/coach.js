@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 // Messaggi del "coach a schermo": testo breve, mai voce (decisione di progetto).
 // Funzioni pure + una piccola classe che decide QUANDO parlare. Testabile senza browser.
 const pick = (arr, rnd) => arr[Math.floor(rnd() * arr.length) % arr.length];

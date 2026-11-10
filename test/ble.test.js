@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 import test from 'node:test'; import assert from 'node:assert/strict';
 import { parseIndoorBikeData, parseHeartRate, cmdSetTargetPower } from '../js/ble.js';
 const dv = a => new DataView(Uint8Array.from(a).buffer);

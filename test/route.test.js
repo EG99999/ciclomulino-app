@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 import test from 'node:test'; import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { parseTrack, Route, routeFromFile } from '../js/route.js';

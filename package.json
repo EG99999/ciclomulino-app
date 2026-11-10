@@ -1,1 +1,17 @@
-{"name":"open-trainer","private":true,"type":"module","scripts":{"start":"node serve.mjs","test":"node --test \"test/*.test.js\""}}
+{
+  "name": "open-trainer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Allenamento indoor nel browser per trainer smart Bluetooth FTMS (ERG adattivo, percorsi 3D, export FIT)",
+  "license": "AGPL-3.0-or-later",
+  "author": "Gatti Elia",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EG99999/ciclomulino-app.git"
+  },
+  "scripts": {
+    "start": "node serve.mjs",
+    "test": "node --test \"test/*.test.js\""
+  }
+}

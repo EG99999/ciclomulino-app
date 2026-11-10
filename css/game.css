@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (C) 2026 Gatti Elia */
 :root{
   --bg:#14102c; --panel:#1f1a45; --panel2:#2c2566; --line:#3d3590;
   --ink:#f4f1ff; --mute:#9a93c9; --acc:#ffcc33; --ok:#4be37a; --bad:#ff4d6d; --cool:#4bc4ff;
@@ -127,6 +129,7 @@ button:focus-visible,select:focus-visible,.btn:focus-within{outline:3px solid va
 .cc.up{bottom:134px}
 @media(max-width:760px){.cc{bottom:150px}.cc.up{bottom:150px}}
 /* debug: puntino di registrazione e pannello live (tasto I) */
+.osm{font-family:var(--px);font-size:6px;line-height:1.4;color:var(--mute);margin-top:3px}.osm[hidden]{display:none}
 .recdot{position:absolute;left:8px;top:24px;z-index:7;font-family:var(--px);font-size:7px;color:#ff4d6d;background:rgba(10,8,28,.7);padding:3px 6px;pointer-events:none}
 .recdot[hidden],.dbgp[hidden]{display:none}
 .dbgp{position:absolute;left:8px;top:44px;z-index:8;margin:0;max-width:min(440px,94vw);max-height:70vh;overflow:hidden;background:rgba(6,6,18,.88);border:2px solid var(--line);padding:6px 8px;font-family:Consolas,"Courier New",monospace;font-size:12px;line-height:1.35;color:#d8d6f0;white-space:pre-wrap;pointer-events:none}

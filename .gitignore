@@ -15,3 +15,8 @@ SPEC.md
 *.pfx
 # checklist personale di prova
 TEST-STASERA.md
+
+# bozze e anteprime di lavoro: mockup3d carica script da altri siti, anteprime ha schermate con dati personali. Mai pubblici.
+mockup/
+mockup3d/
+anteprime/

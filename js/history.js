@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 // Storico delle sedute (nel browser, ultime 300) e statistiche di riepilogo.
 const KEY = 'ciclomulino.history';
 export function normalizedPower(records) {
@@ -29,7 +31,8 @@ export function mergeHistory(a, b) {
   return [...m.values()].sort((x, y) => y.when - x.when).slice(0, 300);
 }
 export function saveHistory(storage, list) { try { storage.setItem(KEY, JSON.stringify(list)); return true; } catch { return false; } }
-export function loadHistory(storage) { try { return JSON.parse(storage.getItem(KEY) || '[]'); } catch { return []; } }
+/** anche lo storico nel localStorage può essere alterato: ogni riga si ricostruisce (numeri veri, testi puliti) e se non è un elenco si riparte da vuoto */
+export function loadHistory(storage) { try { const a = JSON.parse(storage.getItem(KEY) || '[]'); return Array.isArray(a) ? mergeHistory(a, []) : []; } catch { return []; } }
 export function addRide(storage, ride) {
   const h = loadHistory(storage).filter(r => r.id !== ride.id); h.push(ride); h.sort((a, b) => b.when - a.when);
   try { storage.setItem(KEY, JSON.stringify(h.slice(0, 300))); } catch { /* spazio finito */ }

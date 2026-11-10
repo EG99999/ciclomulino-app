@@ -1,8 +1,9 @@
 <!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later · Copyright (C) 2026 Gatti Elia · codice sorgente: vedi il link nell'app (Aiuto → Informazioni) -->
 <html lang="it">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://login.microsoftonline.com https://graph.microsoft.com https://*.1drv.com https://*.microsoftpersonalcontent.com https://*.sharepoint.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://login.microsoftonline.com https://graph.microsoft.com https://*.1drv.com https://*.microsoftpersonalcontent.com https://*.sharepoint.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="referrer" content="no-referrer">
 <script src="js/framebust.js"></script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -85,6 +86,7 @@
     <div class="side">
       <div class="seg"><span class="sl">ALTIMETRIA</span><span class="sl">PERCORSO</span><span class="hint" id="geo">0.0 km · 0%</span></div>
       <div class="sc"><canvas id="side" width="240" height="80"></canvas><canvas id="map" width="160" height="80"></canvas></div>
+      <div class="osm" id="osmAttr" hidden>© OpenStreetMap contributors · quote EU-DEM © Copernicus</div>
     </div>
   </div>
   <div class="goz"><button class="go" id="btnGo">▶ AVVIA</button></div>

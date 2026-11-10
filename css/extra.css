@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (C) 2026 Gatti Elia */
 .acc{font-weight:400;color:var(--acc)}
 .stepbar b,.done .g b,.rng b{font-weight:400;color:var(--ink)}
 .stepbar b.acc{color:var(--acc)}

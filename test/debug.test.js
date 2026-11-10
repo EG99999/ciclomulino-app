@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 import test from 'node:test'; import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { Recorder, redact, redactUrl, hash32, settingsSnapshot, diffSnapshot, folderSink, idbSink, round, stamp } from '../js/debug.js';
@@ -25,11 +27,11 @@ test('debug: la prima riga dice chi, quando e con quale codice; ogni riga ha tem
 test('debug: serializzazione sicura (circolari, errori, byte, testi lunghi, numeri non validi) e mai eccezioni', () => {
   const { r } = mk(); r.start();
   const circ = { a: 1 }; circ.me = circ;
-  assert.doesNotThrow(() => r.log('c', { circ, err: new RangeError('boom'), dv: new DataView(Uint8Array.of(0x44, 0, 0xb8).buffer), u8: Uint8Array.of(1, 255), big: 12n, nan: NaN, inf: Infinity, f: () => 1, long: 'x'.repeat(1000) }));
+  assert.doesNotThrow(() => r.log('c', { circ, err: new RangeError('boom'), dv: new DataView(Uint8Array.of(0x44, 0, 0xb8).buffer), u8: Uint8Array.of(1, 255), big: 12n, nan: NaN, inf: Infinity, f: () => 1, long: 'ab cd '.repeat(200) }));
   const d = lines(r)[1].d;
   assert.equal(d.circ.me, '[circolare]'); assert.equal(d.err.name, 'RangeError'); assert.equal(d.err.message, 'boom');
   assert.equal(d.dv, '44 00 b8'); assert.equal(d.u8, '01 ff'); assert.equal(d.big, '12'); assert.equal(d.nan, null); assert.equal(d.inf, null); assert.ok(!('f' in d));
-  assert.match(d.long, /…\(\+600\)$/); assert.ok(d.long.length < 450);
+  assert.match(d.long, /…\(\+800\)$/); assert.ok(d.long.length < 450);
   const evil = { toJSON() { throw new Error('no'); } };
   assert.doesNotThrow(() => r.log('e', evil)); assert.equal(r.stats().dropped, 1, 'una riga impossibile da scrivere viene contata, non lancia');
 });
@@ -111,11 +113,11 @@ test('debug: cartella dati — appendFile aggiunge in fondo senza toccare il res
 test('debug: le impostazioni nel log non contengono nome, accessi né cartelle; le differenze si vedono', () => {
   const S = { ...DEFAULTS, name: 'Elia', clientId: '946102aa-63b4-4285-8700-8b6a231c73b0', kit: { img: 'data:image/png;base64,AAAA' }, wheelMm: 2136, weight: 70 };
   const snap = settingsSnapshot(S);
-  assert.ok(!('name' in snap) && !('clientId' in snap) && !('kit' in snap) && !('lastPick' in snap)); assert.equal(snap.wheelMm, 2136); assert.equal(snap.weight, 70);
-  assert.deepEqual(diffSnapshot(snap, { ...snap, wheelMm: 2155, debug: false }), { wheelMm: 2155, debug: false });
+  assert.ok(!('name' in snap) && !('clientId' in snap) && !('kit' in snap) && !('lastPick' in snap)); assert.equal(snap.wheelMm, 2136); assert.ok(!('weight' in snap) && !('height' in snap) && !('hrMax' in snap), 'peso, altezza e FC massima non entrano nel log');
+  assert.deepEqual(diffSnapshot(snap, { ...snap, wheelMm: 2155, debug: true }), { wheelMm: 2155, debug: true });
   assert.deepEqual(diffSnapshot(snap, snap), {});
-  assert.equal(DEFAULTS.debug, true); assert.ok(SYNC_SKIP.includes('debug') && !('debug' in settingsPayload(DEFAULTS)), 'il debug è una scelta del singolo PC: non si sincronizza');
-  assert.equal(sanitizeSettings({ debug: 'sì' }).debug, true); assert.equal(sanitizeSettings({ debug: false }).debug, false);
+  assert.equal(DEFAULTS.debug, false, 'spento di serie: lo accende l\'utente'); assert.equal(DEFAULTS.debugFolder, false, 'la cartella è un secondo consenso'); assert.ok(SYNC_SKIP.includes('debug') && !('debug' in settingsPayload(DEFAULTS)), 'il debug è una scelta del singolo PC: non si sincronizza');
+  assert.equal(sanitizeSettings({ debug: 'sì' }).debug, false, 'un valore non booleano torna al predefinito (spento)'); assert.equal(sanitizeSettings({ debug: true }).debug, true);
   assert.equal(hash32(Uint8Array.of(1, 2, 3)).length, 8); assert.equal(hash32(Uint8Array.of(1, 2, 3)), hash32(Uint8Array.of(1, 2, 3))); assert.notEqual(hash32(Uint8Array.of(1, 2, 3)), hash32(Uint8Array.of(1, 2, 4)));
 });
 

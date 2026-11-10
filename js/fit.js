@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 // Encoder FIT minimo: file_id, event, record (1 Hz), lap (uno per step), session, activity.
 const FIT_EPOCH = 631065600; // 1989-12-31 in secondi unix
 const T = { enum: 0x00, u8: 0x02, u16: 0x84, u32: 0x86, u32z: 0x8c };
@@ -131,5 +133,5 @@ export function buildFit(session) {
 export function fitFileName(session, planTitle = 'ciclomulino') {
   const d = new Date(session.startedAt || Date.now()), p = n => String(n).padStart(2, '0');
   const slug = planTitle.toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'ciclomulino';
-  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}-${slug}.fit`;
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}-${slug}.fit`;
 }

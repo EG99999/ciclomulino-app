@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 // Server statico minimo, SOLO per questo PC (127.0.0.1). Web Bluetooth richiede https o localhost.
 // Serve soltanto i file del sito (non .git, note di lavoro, piano personale, test, node_modules) e rifiuta
 // richieste con un Host diverso da localhost (difesa contro il «DNS rebinding»: una pagina esterna non può leggere i tuoi file).

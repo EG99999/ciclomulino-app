@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 // Logo «OPEN TRAINER» a blocchi di pietra con spessore e bordo scuro (stile videogioco a cubi), disegnato su canvas.
 const G5 = {
   O: ['01110', '10001', '10001', '10001', '10001', '10001', '01110'],

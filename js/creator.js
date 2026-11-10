@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 // Creatore di workout: modello modificabile (step e ripetizioni annidate) <-> formato piano-app.json.
 export const TYPES = [['warmup', 'Riscaldamento'], ['interval', 'Work'], ['recovery', 'Recupero'], ['rest', 'Pausa'], ['cooldown', 'Defaticamento']];
 const DEF = {   // durate e intensità iniziali: in % della FTP, così non ci sono watt fissi

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 // Modelli 3D a blocchi (scatole colorate) e sprite pixel-art per i 4 stili. Richiede THREE (js/vendor/three.min.js).
 import { hsh } from './layout3d.js';
 

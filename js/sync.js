@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 // Sincronizzazione tra PC con lo stesso account Microsoft: impostazioni, storico delle sedute e percorsi importati.
 // Vive nella cartella dell'app su OneDrive (Apps/Open Trainer): impostazioni.json, storico.json, percorsi/*.json.
 // Tutto ciò che arriva da OneDrive è trattato come NON fidato (come un file importato): controllato campo per campo.
@@ -30,7 +32,8 @@ export class StateSync {
   async settingsStep(out) {
     const S = this.getSettings(), m = this.meta(), remote = await this.cloud.readJson('impostazioni.json');
     const valid = !!(remote && remote.settings && typeof remote.settings === 'object' && !Array.isArray(remote.settings));
-    const rMod = valid && Number.isFinite(remote.mod) ? remote.mod : 0, lMod = m.settings || 0;
+    const rMod = valid && Number.isFinite(remote.mod) && remote.mod > 0 && remote.mod <= this.now() + 86400000 ? remote.mod : 0,      // un'ora «nel futuro» (anche 1e300) non deve far vincere per sempre il cloud
+      lMod = m.settings || 0;
     if (valid && (rMod > lMod || !m.joined)) {
       if (this.busy()) return;                                       // durante una seduta non cambio niente: lo faccio alla prossima sincronizzazione
       // anche dal cloud non entrano mai le impostazioni proprie del PC (Client ID, cartella…)

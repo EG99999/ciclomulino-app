@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 // Web Bluetooth: trainer FTMS (0x1826) e fascia/orologio FC (0x180D).
 // NON provato su hardware reale in questa sessione: i parser sono testati con byte di esempio (vedi test/).
 // Modalità debug: ogni dispositivo ha `trace(tipo, dati)` (se impostato) e riceve così ogni pacchetto grezzo in entrata (rx),
@@ -16,6 +18,8 @@ export function hex(b) {
 const TAIL = '-0000-1000-8000-00805f9b34fb', h4 = n => n.toString(16).padStart(4, '0');
 /** 00001826-0000-1000-8000-00805f9b34fb -> 1826; gli UUID a 128 bit dei costruttori restano interi */
 export function shortUuid(u) { u = String(u || '').toLowerCase(); return u.endsWith(TAIL) ? (u.startsWith('0000') ? u.slice(4, 8) : u.slice(0, 8)) : u; }
+/** impronta corta dell'identificativo del dispositivo (per riconoscere lo stesso apparecchio nel log senza registrare l'id vero) */
+const shortHash = s => { if (!s) return null; let h = 5381; for (const c of String(s)) h = ((h * 33) ^ c.charCodeAt(0)) >>> 0; return h.toString(16).padStart(8, '0'); };
 const errStr = e => (e ? (e.name ? e.name + ': ' : '') + (e.message || '') : '');
 function withTimeout(p, ms) {
   let t; return Promise.race([p, new Promise((_, rej) => { t = setTimeout(() => rej(new Error('timeout ' + ms + ' ms')), ms); })]).finally(() => clearTimeout(t));
@@ -206,7 +210,7 @@ export class BleTrainer extends Base {
     this._t('request', { filter: h4(UUID.ftms), optional: optional.map(h4) });
     this.device = await navigator.bluetooth.requestDevice({ filters: [{ services: [UUID.ftms] }], optionalServices: optional });
     this.name = this.device.name || 'Trainer';
-    this._t('device', { name: this.name, id: this.device.id || null });
+    this._t('device', { name: this.name, id: shortHash(this.device.id) });
     this.wantConnected = true;
     this._watch();
     await this._open();
@@ -294,7 +298,7 @@ export class BleHr extends Base {
     this._t('request', { filter: h4(UUID.hr), optional: optional.map(h4) });
     this.device = await navigator.bluetooth.requestDevice({ filters: [{ services: [UUID.hr] }], optionalServices: optional });
     this.name = this.device.name || 'FC';
-    this._t('device', { name: this.name, id: this.device.id || null });
+    this._t('device', { name: this.name, id: shortHash(this.device.id) });
     this.wantConnected = true;
     this._watch();
     await this._open();

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Gatti Elia
 // Scatola nera di Open Trainer (modalità debug).
 // Registra, una riga per evento (formato JSONL), ogni dato che ENTRA (pacchetti Bluetooth, tasti, rete, file) e che ESCE
 // (comandi al trainer, file .FIT, salvataggi) più lo stato della seduta ogni secondo. Resta sul PC: non viene inviato a nessuno.
@@ -15,14 +17,17 @@ const toHex = b => { try { const u = b instanceof ArrayBuffer ? new Uint8Array(b
 export function hash32(bytes) { let h = 0x811c9dc5; for (let i = 0; i < bytes.length; i++) { h ^= bytes[i]; h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).padStart(8, '0'); }
 
 /* ---------- segreti ---------- */
-const SECRET = /((?:access|refresh|id)_token|client_secret|authorization|bearer|code_verifier|code|password|passwd|secret|signature)(["']?\s*[:=]\s*["']?|\s+)([A-Za-z0-9._~+/=-]{6,})/gi;
+const SECRET = /((?:access|refresh|id)[_-]?token|client[_-]?secret|authorization|bearer|code[_-]?verifier|code|token|api[_-]?key|apikey|password|passwd|pwd|secret|signature|sig|session[_-]?id|sessionid|login[_-]hint|assertion)(["']?\s*[:=]\s*["']?|\s+)([^\s"'&,;]{6,})/gi;
 const JWT = /eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*/g;
 const BLOB = /[A-Za-z0-9+/=_-]{80,}/g;
 /** toglie dai testi tutto ciò che somiglia a un token, a un codice di accesso o a un blocco di dati codificati */
 export const redact = s => String(s).replace(JWT, '[jwt]').replace(/\b(bearer|basic)(\s+)[A-Za-z0-9._~+/=-]{6,}/gi, '$1$2[nascosto]').replace(SECRET, '$1$2[nascosto]').replace(BLOB, m => `[dati ${m.length}]`);
 /** indirizzo senza parametri né frammento (lì dentro possono esserci i codici di accesso) */
 export function redactUrl(u, base) {
-  try { const x = new URL(String(u), base || 'http://localhost/'); return x.origin + x.pathname + (x.search ? '?…' : ''); } catch { return redact(String(u).split(/[?#]/)[0]).slice(0, 200); }
+  try {
+    const x = new URL(String(u), base || 'http://localhost/'); if (!/^https?:$/.test(x.protocol)) return x.protocol + '[omesso]';
+    return x.origin + x.pathname.replace(/;[^/]*/g, '') + (x.search ? '?…' : '');
+  } catch { return redact(String(u).split(/[?#]/)[0]).slice(0, 200); }
 }
 const stackTop = st => (st ? String(st).split(/\r?\n/).slice(0, 4).join(' | ').replace(/https?:\/\/[^/\s)]+/g, '').slice(0, 400) : '');
 
@@ -31,7 +36,7 @@ function replacer(maxStr) {
   const stack = [];                                           // catena degli oggetti che contengono quello corrente: circolare = un oggetto che contiene sé stesso (lo stesso oggetto usato in due punti diversi va bene)
   return function (key, v) {
     if (v && typeof v === 'object' && stack.includes(this)) { while (stack[stack.length - 1] !== this) stack.pop(); }
-    if (typeof v === 'string') return v.length > maxStr ? redact(v.slice(0, maxStr)) + `…(+${v.length - maxStr})` : redact(v);
+    if (typeof v === 'string') { const r = redact(v); return r.length > maxStr ? r.slice(0, maxStr) + `…(+${r.length - maxStr})` : r; }
     if (typeof v === 'bigint') return String(v);
     if (typeof v === 'function' || typeof v === 'symbol') return undefined;
     if (v instanceof Error) return { name: v.name, message: redact(String(v.message).slice(0, maxStr)), stack: stackTop(v.stack) };
@@ -127,7 +132,7 @@ export const log = (k, d) => rec.log(k, d);
 export const tracer = who => (k, d) => rec.log('ble.' + k, { who, ...d });
 
 /* ---------- impostazioni e ambiente (senza nome, accessi, cartelle) ---------- */
-const KEEP = ['wheelMm', 'bike', 'style', 'quality', 'traffic', 'hazards', 'gestures', 'coachMsgs', 'autoPause', 'ambient', 'sound', 'vol', 'showFps', 'weight', 'height', 'ftp', 'ftpMode', 'hrMax', 'ccCorner', 'ccBar', 'ccPages', 'autoSync', 'autoFit', 'planMode', 'folder', 'cloud', 'debug'];
+const KEEP = ['wheelMm', 'bike', 'style', 'quality', 'traffic', 'hazards', 'gestures', 'coachMsgs', 'autoPause', 'ambient', 'sound', 'vol', 'showFps', 'ftp', 'ftpMode', 'ccCorner', 'ccBar', 'ccPages', 'autoSync', 'autoFit', 'planMode', 'folder', 'cloud', 'debug', 'debugFolder'];
 export function settingsSnapshot(S) { const o = {}; if (S) for (const k of KEEP) if (k in S) o[k] = S[k]; return o; }
 export function diffSnapshot(a, b) { const o = {}; for (const k of Object.keys(b)) if (JSON.stringify(a[k]) !== JSON.stringify(b[k])) o[k] = b[k]; return o; }
 
@@ -155,7 +160,7 @@ function describe(el) {
   const o = { tag: t.tagName.toLowerCase() };
   if (t.id) o.id = t.id;
   for (const a of ['act', 'tab', 'k', 'sw', 'cc', 'th', 'sp', 'ccadd', 'ccrem', 'ccdel']) if (t.dataset && t.dataset[a] != null) o[a] = String(t.dataset[a]).slice(0, 40);
-  if (!/^(input|textarea|select)$/.test(o.tag)) { const tx = String(t.innerText || '').trim().replace(/\s+/g, ' ').slice(0, 30); if (tx) o.text = tx; }   // il contenuto dei campi non si legge
+  if (/^(button|a|label|summary)$/.test(o.tag)) { const tx = String(t.innerText || '').trim().replace(/\s+/g, ' ').slice(0, 30); if (tx) o.text = tx; }   // il contenuto dei campi non si legge
   return o;
 }
 export function installHooks(r = rec, win = window, doc = document) {
@@ -246,12 +251,14 @@ export function idbSink(keep = 6) {
   };
 }
 // 2) la cartella dati (se collegata): file debug/ot-<data>.jsonl, aggiornato di continuo
-export function folderSink(getHandle, ready, append) {
+export function folderSink(getHandle, ready, append, o = {}) {
   return {
     name: 'cartella', every: 30000,
     async write(batch, info) {
+      if (o.enabled && !o.enabled()) return false;                                          // consenso separato spento: non scrive nulla nella cartella
       const h = getHandle(); if (!h || !(await ready(h))) return false;                       // niente cartella (o permesso): riprova al prossimo giro
       await append(h, `debug/ot-${info.runId}.jsonl`, batch.join('\n') + '\n', info.first);
+      if (info.first && o.prune) { try { await o.prune(h); } catch { /* ignora */ } }          // rotazione: restano gli ultimi file
     }
   };
 }
