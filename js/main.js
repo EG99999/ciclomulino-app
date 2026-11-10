@@ -49,7 +49,7 @@ let scr = null;            // schermate (home, scelta, impostazioni...)
 const A = {
   plan: null, ftp: 271, sessIdx: -1, session: null, mode: 'plan',   // 'plan' | 'keys'
   trainer: null, hrDev: null, sim: false, speed: 1,
-  inp: { power: 0, cad: 0, cadSeen: false, hr: null, lastData: 0 },      // cadSeen: il trainer ha mandato almeno una volta la cadenza log: [], gain: 0, doneShown: false,
+  inp: { power: 0, cad: 0, cadSeen: false, hr: null, lastData: 0 }, log: [], gain: 0, doneShown: false,      // cadSeen: il trainer ha mandato almeno una volta la cadenza
   route: null, startDist: 0, routes: [], rawPlan: '', cloudSessions: [], od: null, cloud: null,
   screen: 'home', mine: [], folderSync: null, folderHandle: null, watcher: null, simGrade: null, freeTarget: 0, afterDone: '', imported: [], lastPlace: '',
   keys: new Set(), keyPower: 0, pg: [], pgT: 0, lastSave: 0, fps: 0, drawMs: 0,
