@@ -49,7 +49,7 @@ let scr = null;            // schermate (home, scelta, impostazioni...)
 const A = {
   plan: null, ftp: 271, sessIdx: -1, session: null, mode: 'plan',   // 'plan' | 'keys'
   trainer: null, hrDev: null, sim: false, speed: 1,
-  inp: { power: 0, cad: 0, hr: null, lastData: 0 }, log: [], gain: 0, doneShown: false,
+  inp: { power: 0, cad: 0, cadSeen: false, hr: null, lastData: 0 },      // cadSeen: il trainer ha mandato almeno una volta la cadenza log: [], gain: 0, doneShown: false,
   route: null, startDist: 0, routes: [], rawPlan: '', cloudSessions: [], od: null, cloud: null,
   screen: 'home', mine: [], folderSync: null, folderHandle: null, watcher: null, simGrade: null, freeTarget: 0, afterDone: '', imported: [], lastPlace: '',
   keys: new Set(), keyPower: 0, pg: [], pgT: 0, lastSave: 0, fps: 0, drawMs: 0,
@@ -249,9 +249,9 @@ function bindTrainer(t) {
   A.trainer = t;
   const st = devState('btnTrainer', 'trainer');
   t.trace = D.tracer('trainer'); t.debug = !!S.debug; D.log('dev.bind', { who: 'trainer', kind: t.kind });
-  t.onState = (x, m) => { D.log('dev.state', { who: 'trainer', s: x, m: m || null }); if (x === 'lost' || x === 'off') { A.inp.power = 0; A.inp.cad = 0; A.wheel.reset(); A.real.csc = null; A.real.ftms = null; } if (x === 'on') A.simGrade = null; st(x, m); };
+  t.onState = (x, m) => { D.log('dev.state', { who: 'trainer', s: x, m: m || null }); if (x === 'lost' || x === 'off') { A.inp.power = 0; A.inp.cad = 0; A.inp.cadSeen = false; A.wheel.reset(); A.real.csc = null; A.real.ftms = null; } if (x === 'on') A.simGrade = null; st(x, m); };
   t.onData = d => { const now = performance.now(); if (d.csc) { const k = A.wheel.push(d.csc.wheelRevs, d.csc.wheelTime, S.wheelMm / 1000, now); if (k != null) { A.real.csc = k; A.real.cscAt = now; } } if (d.speed != null && d.speed >= 0 && d.speed < 120) { A.real.ftms = d.speed; A.real.ftmsAt = now; }
-    if (d.power != null) A.inp.power = Math.min(3000, Math.max(0, d.power)); if (d.cadence != null) A.inp.cad = Math.min(250, Math.max(0, d.cadence)); if (d.hr && d.hr >= 30 && d.hr <= 250) A.inp.hr = d.hr; A.inp.lastData = performance.now(); };
+    if (d.power != null) A.inp.power = Math.min(3000, Math.max(0, d.power)); if (d.cadence != null) { A.inp.cad = Math.min(250, Math.max(0, d.cadence)); A.inp.cadSeen = true; } if (d.hr && d.hr >= 30 && d.hr <= 250) A.inp.hr = d.hr; A.inp.lastData = performance.now(); };
   t.onError = m => { logEv('Trainer: ' + m); };
 }
 async function connectTrainer() {
@@ -278,7 +278,7 @@ async function toggleSim() {
     if (A.mode === 'keys') stopKeys();
     A.sim = false; A.speed = 1; document.querySelectorAll('[data-sp]').forEach(x => x.classList.toggle('sel', x.dataset.sp === '1'));
     if (A.trainer) await A.trainer.disconnect(); if (A.hrDev) await A.hrDev.disconnect();
-    A.trainer = null; A.hrDev = null; A.inp.power = 0; A.inp.cad = 0; A.inp.hr = null;
+    A.trainer = null; A.hrDev = null; A.inp.power = 0; A.inp.cad = 0; A.inp.cadSeen = false; A.inp.hr = null;
     $('btnSim').className = 'conn off'; $('simPanel').hidden = true; return;
   }
   if (A.trainer && A.trainer.connected) { toast('Scollega prima il trainer vero'); return; }
@@ -640,7 +640,7 @@ function logicTick() {
       if (A.mode === 'keys') keysStep(h);
       if (A.sim && tr) { tr.tick(h); if (A.hrDev && A.hrDev.tick) A.hrDev.tick(); }
       if (tr && tr.kind === 'ble' && s.started && performance.now() - A.inp.lastData > 4000) { A.inp.power = 0; A.inp.cad = 0; }
-      const target = s.update(h, { power: A.inp.power, cad: A.inp.cad, hr: A.inp.hr, connected: !!(tr && tr.connected), grade: A.route ? A.route.gradeAt(A.startDist + s.dist) : null });
+      const target = s.update(h, { power: A.inp.power, cad: A.inp.cadSeen ? A.inp.cad : null, hr: A.inp.hr, connected: !!(tr && tr.connected), grade: A.route ? A.route.gradeAt(A.startDist + s.dist) : null });
       if (tr && tr.connected && s.started && !s.done && A.mode !== 'keys' && A.mode !== 'free') tr.setTargetPower(target);
       if (A.mode === 'free' && tr && tr.connected && s.started && !s.done) {
         if (tr.simUnsupported || !tr.setSimulation) tr.setTargetPower(s.paused ? 50 : A.freeTarget);
@@ -678,8 +678,9 @@ function frameBody(now) {
     const st = s.step, vs = real * (A.sim ? A.speed : 1);
     V.dist += (s.active ? s.speed * vs : 0); V.dist += (s.dist + A.startDist - V.dist) * Math.min(1, real * 6);   // distanza fluida a 60 FPS
     V.running = s.active; V.reduced = s.erg.reduced && A.mode !== 'keys'; V.prog = s.planPos / Math.max(1, s.totalEst);
-    V.speed = s.speed; V.slope = s.grade; V.cad = A.inp.cad; V.power = A.inp.power; V.hard = st.t === 'interval';
-    V.phase += A.inp.cad / 60 * Math.PI * 2 * real * (s.active ? 1 : 0);
+    const cadView = A.inp.cadSeen ? A.inp.cad : (A.inp.power > 20 ? 80 : 0);      // senza cadenza dal trainer le gambe girano a un ritmo di riferimento finché ci sono watt
+    V.speed = s.speed; V.slope = s.grade; V.cad = cadView; V.power = A.inp.power; V.hard = st.t === 'interval';
+    V.phase += cadView / 60 * Math.PI * 2 * real * (s.active ? 1 : 0);
     const curveAt = d => A.route ? A.route.curveAt(d) : 60 * Math.sin(d * 0.0045) * Math.sin(d * 0.0013 + 1) * (V.env === 'city' ? 0.35 : 1);
     V.curve = curveAt(V.dist);
     const leanT = clamp((curveAt(V.dist + 12) - curveAt(V.dist)) / 6, -1, 1) * clamp(s.speed / 6, 0, 1) + (V.latT - V.lat) * clamp(s.speed / 8, 0, 1) * 0.5;
@@ -749,7 +750,7 @@ function dbgPanel() {
     }
   } else L.push('TRAINER: nessuno');
   if (hd) L.push(`FC ${hd.name || hd.kind} · ${hd.connected ? 'collegata' : 'NON collegata'}${hd.stats && hd.kind === 'ble' ? ` · pacchetti ${hd.stats.rx} (${dbgRate.hr}/s) · ultimo ${ago(hd.stats.last)}` : ''}`);
-  L.push(`IN  ${Math.round(i.power)} W · ${Math.round(i.cad)} rpm · FC ${i.hr ?? '--'} · ${rk == null ? '--' : rk.toFixed(1)} km/h (${realSource()})`);
+  L.push(`IN  ${Math.round(i.power)} W · ${i.cadSeen ? Math.round(i.cad) + ' rpm' : 'cadenza n.d.'} · FC ${i.hr ?? '--'} · ${rk == null ? '--' : rk.toFixed(1)} km/h (${realSource()})`);
   if (s) {
     L.push(`ERG ${s.targetW} W = base ${Math.round(s.base)} × ${s.erg.L.toFixed(2)}${s.erg.reduced ? ' RIDOTTO' : ''} · cadenza bassa ${s.erg.lowT.toFixed(1)} s / alta ${s.erg.highT.toFixed(1)} s`,
       `SEDUTA ${fmt(s.t)} · step ${s.idx + 1}/${s.steps.length} · ${s.paused ? 'PAUSA (' + s.pauseReason + ')' : s.done ? 'FINITA' : s.started ? 'in corso' : 'pronta'}`);
@@ -761,7 +762,7 @@ function dbgPanel() {
 function dbgTick() {
   const s = A.session, tr = A.trainer, hd = A.hrDev, V = G.V, i = A.inp, pn = performance.now(), now = Date.now();
   const d = { scr: A.screen, mode: A.mode, sim: A.sim, x: A.speed, vis: document.visibilityState === 'visible' ? 1 : 0, fps: A.fps, ms: D.round(A.drawMs, 1), w3: !!(w3 && w3.ok) };
-  d.in = { p: Math.round(i.power), cad: D.round(i.cad, 1), hr: i.hr, age: i.lastData ? Math.round(pn - i.lastData) : null, kmh: D.round(realKmh(), 1), src: realSource(), csc: D.round(A.real.csc, 1), ftms: D.round(A.real.ftms, 1) };
+  d.in = { p: Math.round(i.power), cad: D.round(i.cad, 1), cs: i.cadSeen ? 1 : 0, hr: i.hr, age: i.lastData ? Math.round(pn - i.lastData) : null, kmh: D.round(realKmh(), 1), src: realSource(), csc: D.round(A.real.csc, 1), ftms: D.round(A.real.ftms, 1) };
   if (tr) { const b = tr.stats; d.tr = { k: tr.kind, on: !!tr.connected, rx: dbgRate.tr, tot: b ? b.rx : null, last: b && b.last ? now - b.last : null, wr: b ? b.wr : null, wrErr: b ? b.wrErr : null, supp: b ? b.supp : null, lastW: tr.lastW, simUn: !!tr.simUnsupported, csc: !!tr.hasCsc }; }
   if (hd) d.hr = { k: hd.kind, on: !!hd.connected, rx: dbgRate.hr, last: hd.stats && hd.stats.last ? now - hd.stats.last : null };
   if (s) {

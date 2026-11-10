@@ -87,13 +87,16 @@ export class Session {
    * Restituisce il setpoint (W) da mandare al trainer.
    */
   update(dt, input) {
-    const { power = 0, cad = 0, hr = null, connected = true, grade = null } = input;
+    const { power = 0, hr = null, connected = true, grade = null } = input;
+    // la cadenza può mancare (null/NaN): alcuni trainer non la mandano. In quel caso decidono i watt e la logica ERG sulla cadenza resta ferma
+    const cadKnown = Number.isFinite(input.cad), cad = cadKnown ? input.cad : 0;
     if (this.started && !this.done && !connected && !this.paused) this.pause('trainer');
     // auto-pausa se ti fermi sui pedali, ripresa automatica quando riparti (come Zwift)
     if (this.started && !this.done && connected) {
-      const still = cad < 5 && power < 8;
+      const still = (!cadKnown || cad < 5) && power < 8;
+      const moving = (cadKnown && cad > 30) || power >= 30;      // si riparte pedalando: la cadenza oltre 30 rpm oppure almeno 30 W (se la cadenza non arriva o è a zero, bastano i watt)
       if (!this.paused) { this.stillT = still ? this.stillT + dt : 0; if (this.stillT >= this.cfg.autoPauseSec) { this.stillT = 0; this.pause('auto'); } }
-      else if (this.pauseReason === 'auto') { this.moveT = cad > 30 ? this.moveT + dt : 0; if (this.moveT >= this.cfg.autoResumeSec) { this.moveT = 0; this.resume(); } }
+      else if (this.pauseReason === 'auto') { this.moveT = moving ? this.moveT + dt : 0; if (this.moveT >= this.cfg.autoResumeSec) { this.moveT = 0; this.resume(); } }
     }
     const active = this.active;
     const s = this.step;
@@ -112,7 +115,7 @@ export class Session {
       }
     } else this.speed = 0;
 
-    if (!this.cfg.noErg) for (const e of this.erg.update(dt, cad, active && connected)) this.emit(e);   // noErg: test FTP e pedalata libera, nessuna riduzione automatica
+    if (!this.cfg.noErg) for (const e of this.erg.update(dt, cadKnown ? cad : NaN, active && connected)) this.emit(e);   // noErg: test FTP e pedalata libera, nessuna riduzione automatica
 
     const cur = this.step;
     this.base = ramp(this.fromW, cur.mid, this.rampT, this.cfg.stepRampSec);
