@@ -55,3 +55,60 @@ test('gioco: andando sulla corsia opposta o contro i mezzi si viene colpiti (e c
   assert.ok(r.hits.length >= 3, 'colpi: ' + r.hits.length); assert.ok(r.hits.some(h => h.what === 'car'), 'almeno un\'auto');
   const times = r.hits.length; assert.ok(times < 600 / 1.2, 'non uno per fotogramma');
 });
+
+/* ---- partenza libera: mai dentro un cantiere, una buca o davanti a un'auto ---- */
+function startAt(dist, { auto = false, lat = 0, time = 0, zone = true } = {}) {
+  const V = G.V; Object.assign(V, { dist, lat, latT: lat, jump: 0, jumpT: -1, hitT: 0, shake: 0, inv: 0, running: true, auto, traffic: true, hazards: true, time, speed: 8, events: [] });
+  for (const h of G.hazards) h.prev = 999;
+  for (const c of G.crossers) c.hold = 0;
+  if (zone) { V._ld = null; V.clearAt = null; } else { V._ld = dist; V.clearAt = null; }     // senza zona libera = il comportamento di prima (controllo)
+}
+function runFrames(seconds, speed = 8) { const V = G.V, dt = 1 / 60, ev = []; for (let t = 0; t < seconds; t += dt) { V.time += dt; V.dist += speed * dt; G.updateWorld(dt); ev.push(...G.drainEvents()); } return ev; }
+
+test('partenza libera: da 20 m dietro a 50 m davanti al punto di partenza non c\'è nulla, anche al giro dopo; poi la zona sparisce da sola', () => {
+  startAt(1234); G.updateWorld(1 / 60);
+  assert.equal(G.V.clearAt, 1234, 'la prima posizione apre la zona');
+  for (const z of [1234, 1234 - 20, 1234 + 50, 1234 + 3600, 1234 - 3600 + 10]) assert.ok(G.hiddenAt(z), 'nascosto a ' + z);
+  for (const z of [1234 - 21, 1234 + 51, 1234 + 1800]) assert.ok(!G.hiddenAt(z), 'visibile a ' + z);
+  runFrames(3, 8); assert.equal(G.V.clearAt, 1234, 'ancora dentro la zona (24 m dopo)');
+  runFrames(6, 8); assert.equal(G.V.clearAt, null, 'il ciclista l\'ha lasciata: tutto torna normale');
+  assert.ok(!G.hiddenAt(1234 + 10));
+});
+test('partenza libera: un salto di posizione (ripartenza, nuovo percorso) apre una zona nuova, la pedalata normale no', () => {
+  startAt(500); G.updateWorld(1 / 60); const first = G.V.clearAt;
+  runFrames(2, 14); assert.equal(G.V.clearAt, first, 'andando avanti la zona resta quella');
+  G.V.dist = 2000; G.updateWorld(1 / 60); assert.equal(G.V.clearAt, 2000, 'salto: nuova zona');
+  G.V.dist = 40; G.updateWorld(1 / 60); assert.equal(G.V.clearAt, 40, 'salto indietro (checkpoint): nuova zona');
+});
+test('partenza libera, gioco: partendo SOPRA una buca o un cantiere non si viene colpiti (prima sì)', () => {
+  for (const h of G.hazards) {
+    startAt(h.z - 5, { lat: h.lane / 0.7, zone: false }); const prima = runFrames(1.5).filter(e => e.type === 'hit').length;
+    startAt(h.z - 5, { lat: h.lane / 0.7 }); const dopo = runFrames(1.5).filter(e => e.type === 'hit').length;
+    assert.ok(prima >= 1, 'controllo: senza la zona libera ' + h.type + ' a ' + h.z + ' colpisce'); assert.equal(dopo, 0, 'con la zona libera niente colpo a ' + h.z);
+  }
+});
+test('partenza libera, allenamento: partendo davanti a una buca la bici non salta e non sterza per un ostacolo che non si vede', () => {
+  const h = G.hazards.find(q => q.type === 'pothole');
+  startAt(h.z - 4, { auto: true, lat: h.lane / 0.7, zone: false }); const prima = runFrames(1).filter(e => e.type === 'hop').length;
+  startAt(h.z - 4, { auto: true, lat: h.lane / 0.7 }); const dopo = runFrames(1).filter(e => e.type === 'hop').length;
+  assert.ok(prima >= 1, 'controllo: senza zona libera salta'); assert.equal(dopo, 0);
+});
+test('partenza libera, gioco: partendo in mezzo a un incrocio o addosso a un\'auto non si viene investiti', () => {
+  for (const x of G.crossers) {
+    const ph0 = x.ph;
+    for (const zone of [false, true]) {
+      startAt(x.zc - 5, { lat: 0, zone }); x.ph = (((3 - (5 / 8) * x.vx) % 6) + 6) % 6;
+      const n = runFrames(1.5).filter(e => e.type === 'hit').length;
+      if (!zone) assert.ok(n >= 1, 'controllo: senza zona libera l\'auto a ' + x.zc + ' investe'); else assert.equal(n, 0, 'con la zona libera nessuno scontro a ' + x.zc);
+    }
+    x.ph = ph0;
+  }
+  for (const m of G.movers) {
+    if (m.type === 'ped') continue;
+    for (const zone of [false, true]) {
+      startAt(m.z0 - 0.5, { lat: m.lane / 0.7, zone }); G.V.time = 0.001;
+      const n = runFrames(0.3, 0).filter(e => e.type === 'hit').length;
+      if (!zone) assert.ok(n >= 1, 'controllo: senza zona libera ' + m.type + ' a ' + m.z0 + ' colpisce'); else assert.equal(n, 0, m.type + ' a ' + m.z0 + ' non colpisce se si parte lì');
+    }
+  }
+});

@@ -43,3 +43,6 @@ Cartella `routes/`: tracciati ricavati da **OpenStreetMap** © OpenStreetMap con
 Garmin, Fenix e FIT sono marchi di Garmin Ltd.; Zwift è un marchio di Zwift, Inc.; Elite e Suito sono marchi di Elite S.r.l.; Bluetooth è un marchio di Bluetooth SIG, Inc.; Microsoft, OneDrive, Windows ed Edge sono marchi di Microsoft Corporation; Google e Chrome sono marchi di Google LLC; Giant, Propel e gli altri marchi di biciclette citati appartengono ai rispettivi proprietari.
 **Open Trainer non è affiliato, sponsorizzato né approvato da nessuno di essi.** I nomi servono solo a indicare la compatibilità (trainer, orologio) o la forma e i colori tipici di una bici nel gioco: nessun logo ufficiale è riprodotto. Il formato `.FIT` è scritto con un encoder proprio e minimale; non contiene codice del FIT SDK di Garmin.
 «Open Trainer» è il nome di questo progetto; non è stato verificato che non coincida con marchi di terzi.
+
+### Suoni — CC0 (pubblico dominio)
+Cartella `sounds/`: registrazioni reali di Joseph Sardin, [BigSoundBank](https://bigsoundbank.com), dedicate al pubblico dominio con **CC0 1.0** (nessun obbligo di citazione, la citiamo volentieri). L'elenco dei file e dei suoni originali è in [sounds/CREDITI.md](sounds/CREDITI.md). Non sono coperti dall'AGPL del codice.

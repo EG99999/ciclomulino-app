@@ -20,9 +20,18 @@ test('pausa automatica: si riparte dai watt anche se la cadenza arriva ma resta 
   run(s, 3, { power: 120, cad: 0 }); assert.equal(s.paused, false); assert.ok(s.speed > 0);
 });
 
-test('pausa automatica: senza pedalare davvero (sotto 30 W, cadenza bassa) non riparte; con cadenza sopra 30 riparte come prima', () => {
-  const a = mk(); run(a, 7, { power: 0, cad: 0 }); run(a, 10, { power: 20, cad: 10 }); assert.equal(a.paused, true, 'ruota che gira da sola: resta in pausa');
-  const b = mk(); run(b, 7, { power: 0, cad: 0 }); run(b, 3, { power: 0, cad: 80 }); assert.equal(b.paused, false, 'regola vecchia: cadenza sopra 30');
+test('pausa automatica: pedalando anche piano riparte (≥ 10 rpm o ≥ 12 W); i valori da «ruota che gira da sola» no', () => {
+  const quiet = mk(); run(quiet, 7, { power: 0, cad: 0 }); run(quiet, 20, { power: 5, cad: 0 }); assert.equal(quiet.paused, true, '5 W e 0 rpm: nessuno pedala, resta in pausa');
+  run(quiet, 20, { power: 7, cad: 4 }); assert.equal(quiet.paused, true, 'poco sopra lo zero ma sotto le soglie: resta in pausa');
+  const w = mk(); run(w, 7, { power: 0, cad: 0 }); run(w, 3, { power: 15, cad: 0 }); assert.equal(w.paused, false, '15 W bastano');
+  const c = mk(); run(c, 7, { power: 0, cad: 0 }); run(c, 3, { power: 0, cad: 12 }); assert.equal(c.paused, false, '12 rpm bastano');
+  const b = mk(); run(b, 7, { power: 0, cad: 0 }); run(b, 3, { power: 0, cad: 80 }); assert.equal(b.paused, false, 'cadenza normale: come prima');
+});
+
+test('un dato basso isolato durante la ripartenza non azzera il conteggio (a bassi giri la cadenza si aggiorna a scatti)', () => {
+  const s = mk(); run(s, 7, { power: 0, cad: 0 }); assert.equal(s.paused, true);
+  for (let i = 0; i < 6 && s.paused; i++) { run(s, 1, { power: 5, cad: 13 }); if (!s.paused) break; run(s, 1, { power: 5, cad: 0 }); }
+  assert.equal(s.paused, false, 'riparte anche con il dato che salta tra 13 e 0 rpm');
 });
 
 test('senza cadenza dal trainer la logica ERG sulla cadenza non scatta (prima: carico al 50% per sempre); con cadenza bassa vera scatta', () => {

@@ -32,7 +32,7 @@ export class SimTrainer {
     const hard = clamp((rel - 0.5) / 0.4, 0, 1);
     const cadT = this.pedaling ? this.cadBase - (this.fatigueOn ? 42 * this.fat * hard : 0) + (Math.random() - 0.5) * 3 : 0;
     this.cad += (cadT - this.cad) * Math.min(1, dt * 2);
-    this.power += (tgt - this.power) * Math.min(1, dt * (this.manual != null ? 2 : 3));
+    this.power += ((this.pedaling ? tgt : 0) - this.power) * Math.min(1, dt * (this.manual != null ? 2 : 3));      // senza pedalare non c'è potenza (prima restava quella del carico: la pausa automatica non scattava mai nel simulatore)
     const p = this.power > 1 ? this.power * (1 + (Math.random() - 0.5) * 0.012) : 0;
     const hrT = 62 + 0.34 * this.power;
     this.hr += (hrT - this.hr) * Math.min(1, dt / 30);

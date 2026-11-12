@@ -118,7 +118,7 @@ void main(){
       for (const off of [-6.2, 6.2]) for (let i = -3; i <= 3; i++) { const q = P.frame(dc + off, i * 1.0); D.box(0.55, 0.05, 1.4, 0xf4f4f4, q.x, q.y + 0.1, q.z, q.yaw); }
     }
     // ostacoli
-    for (const h of chunkHazards(c, G.hazards, G.TRACK)) { if (!V.hazards) break; const f = P.frame(h.d, h.lane * ROAD_HALF); M.addHazard(D, h, { x: f.x, y: f.y + 0.05, z: f.z, yaw: f.yaw }); if (h.type === 'works') { const q = P.frame(h.d - 40, ROAD_HALF + 2); D.box(0.1, 2.2, 0.1, 0x666666, q.x, q.y, q.z); D.box(1.1, 0.8, 0.1, 0xffd24a, q.x, q.y + 2.2, q.z, q.yaw); } }
+    for (const h of chunkHazards(c, G.hazards, G.TRACK)) { if (!V.hazards) break; if (G.hiddenAt(h.d)) continue; const f = P.frame(h.d, h.lane * ROAD_HALF); M.addHazard(D, h, { x: f.x, y: f.y + 0.05, z: f.z, yaw: f.yaw }); if (h.type === 'works') { const q = P.frame(h.d - 40, ROAD_HALF + 2); D.box(0.1, 2.2, 0.1, 0x666666, q.x, q.y, q.z); D.box(1.1, 0.8, 0.1, 0xffd24a, q.x, q.y + 2.2, q.z, q.yaw); } }
     // scenario
     const items = chunkDecor(c, { envOf: d => this.envOf(d), path: P, amp: st.amp, quant: st.quant, lim: st.lim });
     if (st.sprite) {
@@ -139,6 +139,8 @@ void main(){
   }
   _ensureChunks() {
     const a = Math.floor((V.dist - 90) / CH), b = Math.floor((V.dist + this.style.view) / CH); let built = 0;
+    // nuova zona libera (partenza o ripartenza): i pezzi di mondo già costruiti che la toccano si rifanno senza ostacoli (prima il nuovo, poi si butta il vecchio: la strada non sparisce mai)
+    if (V.clearAt != null && this._clr !== V.clearAt) { this._clr = V.clearAt; for (const [c, old] of this.chunks) if (G.zoneTouches(c * CH + CH / 2, CH / 2)) { this.chunks.set(c, this._buildChunk(c)); this._dispose(old); } }
     for (let c = a; c <= b; c++) if (!this.chunks.has(c) && built < 2) { this.chunks.set(c, this._buildChunk(c)); built++; }
     for (const [c, g] of this.chunks) if (c < a - 1 || c > b + 1) { this._dispose(g); this.chunks.delete(c); }
   }
@@ -157,7 +159,7 @@ void main(){
     for (const m of G.movers) {
       const o = this.movObj.get(m); if (!V.traffic) { if (o) o.g.visible = false; continue; }
       let zabs = m.z0 + m.vel * V.time; zabs = ((zabs % T) + T) % T; const rel = ((zabs - dist + T / 2) % T + T) % T - T / 2;
-      if (rel < -30 || rel > st.view * 0.8) { if (o) o.g.visible = false; continue; }
+      if (rel < -30 || rel > st.view * 0.8 || G.hiddenAt(zabs)) { if (o) o.g.visible = false; continue; }
       const d = dist + rel, env = this.envOf(d);
       if (m.type === 'tractor' && env !== 'country') { if (o) o.g.visible = false; continue; }
       if (m.type === 'ped' && env === 'mountains' && m.k % 3) { if (o) o.g.visible = false; continue; }
@@ -171,7 +173,7 @@ void main(){
     // auto che attraversano
     for (const x of G.crossers) {
       let o = this.cross.get(x); const T2 = G.TRACK, rel = (((x.zc - dist + T2 / 2) % T2) + T2) % T2 - T2 / 2;
-      if (!V.traffic || rel < 8 || rel > 160 || this.envOf(dist + rel) === 'mountains') { if (o) o.visible = false; continue; }
+      if (!V.traffic || rel < 8 || rel > 160 || G.hiddenAt(x.zc) || this.envOf(dist + rel) === 'mountains') { if (o) o.visible = false; continue; }
       if (!o) { const cs = typeof x.col === 'string' ? x.col : '#' + (x.col >>> 0).toString(16).padStart(6, '0'); o = st.sprite ? M.sprite(this.sprites.car(cs, false), 4.4, 2.6) : M.carMesh(new THREE.Color(cs), false); this.actors.add(o); this.cross.set(x, o); }
       o.visible = true; const u = G.crosserU(x), f = this.path.frame(dist + rel, u * ROAD_HALF * 1.2); o.position.set(f.x, f.y + 0.05, f.z); if (!st.sprite) o.rotation.y = f.yaw + (x.vx > 0 ? -Math.PI / 2 : Math.PI / 2);
     }

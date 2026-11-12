@@ -59,11 +59,12 @@ const A = {
 /** km/h reali dal trainer: prima i giri ruota × circonferenza, altrimenti la velocità che manda l'FTMS; null se non arriva niente */
 function realKmh() {
   const now = performance.now(), r = A.real;
-  if (r.csc != null && now - r.cscAt < 4000) return r.csc;
+  // prima la velocità che calcola il trainer (FTMS): il contatore «giri ruota» del Suito-T conta ~24 impulsi per giro e dà valori sbagliati (a 6 km/h ne mostrerebbe 144)
   if (r.ftms != null && now - r.ftmsAt < 4000) return r.ftms;
+  if (r.csc != null && now - r.cscAt < 4000) return r.csc;
   return null;
 }
-const realSource = () => { const now = performance.now(), r = A.real; return r.csc != null && now - r.cscAt < 4000 ? 'giri ruota × circonferenza' : r.ftms != null && now - r.ftmsAt < 4000 ? 'velocità inviata dal trainer' : 'nessun dato dal trainer'; };
+const realSource = () => { const now = performance.now(), r = A.real; return r.ftms != null && now - r.ftmsAt < 4000 ? 'velocità inviata dal trainer' : r.csc != null && now - r.cscAt < 4000 ? 'giri ruota × circonferenza' : 'nessun dato dal trainer'; };
 const quiet = () => A.speed > 5;           // a ×20/×60 niente suoni né messaggi
 
 /* ---------- utilità UI ---------- */
@@ -220,7 +221,7 @@ async function restoreRun() {
   const s = newSession(p, A.ftp, { noErg: A.mode !== 'plan' }); s.restore(o.snap);
   A.sessIdx = A.plan ? A.plan.sessions.findIndex(x => x.id === p.id) : -1; if (A.sessIdx >= 0) $('sessSel').value = String(A.sessIdx);
   setSession(s, p); A.watcher = p.test && p.test.kind === 'ramp' ? new RampWatcher() : null; A.doneShown = false; A.simGrade = null; A.freeTarget = round5(A.ftp * 0.45);
-  G.V.dist = s.dist + A.startDist; scr.show('ride'); applySettings();
+  G.V.dist = s.dist + A.startDist; G.clearStart(G.V.dist); scr.show('ride'); applySettings();
   logEv('Seduta ripristinata a ' + fmt(s.t)); toast('Seduta ripristinata a ' + fmt(s.t) + ': collega il trainer e premi RIPRENDI');
 }
 function fitFromRecovery() {
@@ -300,7 +301,7 @@ async function startKeys() {
   const r = parsePlan({ ftp: A.ftp, sessions: [{ id: 'libero', title: 'Giro libero (tastiera)', type: 'Giro libero', notes: 'Modalità gioco: guidi tu con la tastiera.', blocks: [{ t: 'interval', n: 'Giro libero', d: 7200, lo: 100, hi: 400 }] }] });
   A.mode = 'keys'; A.keyPower = 0; G.V.auto = false;
   setSession(newSession(r.sessions[0], A.ftp, { noErg: true }), r.sessions[0]); A.session.start(); keepAwake(true);
-  G.V.lat = G.V.latT = G.V.rest; gameNew();
+  G.V.dist = A.startDist; G.clearStart(A.startDist); G.V.lat = G.V.latT = G.V.rest; gameNew();
   $('keyhelp').hidden = false; $('menu').hidden = true; $('btnKeys').classList.add('sel'); $('btnKeys').textContent = '⌨ ESCI DAL GIOCO';
   showCoach('Modalità gioco: ↑ pedala, ← → sterza, SPAZIO salta. Hai 3 vite: schiva auto, ciclisti, buche e lavori!', 'info');
   return true;
@@ -334,7 +335,7 @@ function gameHit(what) {
   }
   const back = Math.max(0, V.dist - g.cp);                          // si riparte dall'ultimo checkpoint
   s.dist = Math.max(0, s.dist - back); s.stepDist = Math.max(0, s.stepDist - back);
-  V.dist = g.cp; V.lat = V.latT = V.rest; V.jump = 0; V.jumpT = -1; V.inv = 3; A.keyPower = 0;
+  V.dist = g.cp; G.clearStart(g.cp); V.lat = V.latT = V.rest; V.jump = 0; V.jumpT = -1; V.inv = 3; A.keyPower = 0;
   showCoach((HIT_TXT[what] || 'Colpito') + '! Ti restano ' + g.lives + (g.lives === 1 ? ' vita' : ' vite') + ': riparti dall\'ultimo checkpoint.', 'warn');
 }
 /** checkpoint all'ingresso di un paese o ogni 2 km (mai più vicini di 500 m) */
@@ -344,7 +345,7 @@ function gameTick() {
   if (V.dist - g.cp >= 500 && ((nm && nm !== g.place) || V.dist - g.cp >= 2000)) { g.cp = V.dist; D.log('game.checkpoint', { dist: D.round(V.dist, 1), place: nm }); toast('✔ Checkpoint' + (nm ? ' · ' + nm : '')); }
   g.place = nm;
 }
-function gameAgain() { const s = A.session, V = G.V; if (!s) return; s.dist = 0; s.stepDist = 0; V.dist = A.startDist; V.lat = V.latT = V.rest; V.jump = 0; V.jumpT = -1; A.keyPower = 0; s.resume(); gameNew(); }
+function gameAgain() { const s = A.session, V = G.V; if (!s) return; s.dist = 0; s.stepDist = 0; V.dist = A.startDist; G.clearStart(A.startDist); V.lat = V.latT = V.rest; V.jump = 0; V.jumpT = -1; A.keyPower = 0; s.resume(); gameNew(); }
 
 /* ---------- controlli ---------- */
 function ready() {
@@ -676,7 +677,7 @@ function frameBody(now) {
     G.updateGestures(real, V); G.updateWorld(real); G.drainEvents();
   } else if (s) {
     const st = s.step, vs = real * (A.sim ? A.speed : 1);
-    V.dist += (s.active ? s.speed * vs : 0); V.dist += (s.dist + A.startDist - V.dist) * Math.min(1, real * 6);   // distanza fluida a 60 FPS
+    V.dist += (s.active ? s.speed * vs : 0); const gap = s.dist + A.startDist - V.dist; V.dist += Math.abs(gap) > 15 ? gap : gap * Math.min(1, real * 6);   // distanza fluida a 60 FPS; uno scarto grande (partenza, ripartenza) è un salto, non una corsa all'indietro di 170 m
     V.running = s.active; V.reduced = s.erg.reduced && A.mode !== 'keys'; V.prog = s.planPos / Math.max(1, s.totalEst);
     const cadView = A.inp.cadSeen ? A.inp.cad : (A.inp.power > 20 ? 80 : 0);      // senza cadenza dal trainer le gambe girano a un ritmo di riferimento finché ci sono watt
     V.speed = s.speed; V.slope = s.grade; V.cad = cadView; V.power = A.inp.power; V.hard = st.t === 'interval';
@@ -935,7 +936,7 @@ async function launch(kind) {
     const r = parsePlan({ ftp: A.ftp, sessions: [raw] }), p = r.sessions[0];
     setSession(newSession(p, A.ftp, { noErg: true }), p); syncTrainerFtp();
   }
-  A.session.start(); keepAwake(true); G.V.dist = A.startDist; G.V.lat = G.V.latT = G.V.rest; scr.show('ride'); applySettings();
+  A.session.start(); keepAwake(true); G.V.dist = A.startDist; G.clearStart(A.startDist); G.V.lat = G.V.latT = G.V.rest; scr.show('ride'); applySettings();
   showCoach(A.mode === 'test' ? (kind === 'ramp' ? 'Ramp test: pedala fino al limite, io alzo il carico ogni minuto.' : 'Test 20 minuti: ↑/↓ cambiano i watt di 5.') : A.mode === 'free' ? 'Pedalata libera: il trainer segue la pendenza.' : 'Si parte!', 'info');
 }
 function leaveRide() {

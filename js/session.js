@@ -10,7 +10,9 @@ export class Session {
   /** @param plan seduta già validata (parsePlan) @param ftp numero */
   constructor(plan, ftp, cfg = {}) {
     this.plan = plan; this.ftp = ftp; this.steps = plan.steps;
-    this.cfg = { autoPauseSec: 5, autoResumeSec: 2, ...ERG_CFG, ...cfg };
+    // pausa automatica: si ferma dopo 5 s con cadenza < 5 rpm e potenza < 8 W; riparte con cadenza ≥ 10 rpm oppure potenza ≥ 12 W per 2 s.
+    // Il 9-11 nov 2026 il Suito-T riportava 5-13 rpm e 5-13 W pedalando piano: con le soglie di prima (30 rpm / 30 W) non ripartiva mai da solo.
+    this.cfg = { autoPauseSec: 5, autoResumeSec: 2, resumeCad: 10, resumeW: 12, ...ERG_CFG, ...cfg };
     this.erg = new Erg(this.cfg);
     this.reset();
   }
@@ -94,9 +96,10 @@ export class Session {
     // auto-pausa se ti fermi sui pedali, ripresa automatica quando riparti (come Zwift)
     if (this.started && !this.done && connected) {
       const still = (!cadKnown || cad < 5) && power < 8;
-      const moving = (cadKnown && cad > 30) || power >= 30;      // si riparte pedalando: la cadenza oltre 30 rpm oppure almeno 30 W (se la cadenza non arriva o è a zero, bastano i watt)
+      const moving = (cadKnown && cad >= this.cfg.resumeCad) || power >= this.cfg.resumeW;      // si riparte pedalando, anche piano; se la cadenza non arriva o resta a zero bastano i watt
       if (!this.paused) { this.stillT = still ? this.stillT + dt : 0; if (this.stillT >= this.cfg.autoPauseSec) { this.stillT = 0; this.pause('auto'); } }
-      else if (this.pauseReason === 'auto') { this.moveT = moving ? this.moveT + dt : 0; if (this.moveT >= this.cfg.autoResumeSec) { this.moveT = 0; this.resume(); } }
+      // un dato basso isolato (a bassi giri la cadenza si aggiorna a scatti) non azzera tutto: il contatore scende piano invece di tornare a zero
+      else if (this.pauseReason === 'auto') { this.moveT = moving ? this.moveT + dt : Math.max(0, this.moveT - dt * 0.5); if (this.moveT >= this.cfg.autoResumeSec) { this.moveT = 0; this.resume(); } }
     }
     const active = this.active;
     const s = this.step;

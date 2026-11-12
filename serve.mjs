@@ -8,9 +8,9 @@ import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('.', import.meta.url));
-const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json' };
+const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.ogg': 'audio/ogg', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json' };
 const port = Number(process.env.PORT) || 8080;
-const ALLOWED = /^\/(index\.html|sw\.js|manifest\.webmanifest|(css|js|icons|routes|fonts)\/[A-Za-z0-9_.\-\/]+)$/;
+const ALLOWED = /^\/(index\.html|sw\.js|manifest\.webmanifest|(css|js|icons|routes|fonts|sounds)\/[A-Za-z0-9_.\-\/]+)$/;
 const HOST_OK = new RegExp('^(localhost|127\\.0\\.0\\.1):' + port + '$');
 const SAFE = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY', 'Cross-Origin-Resource-Policy': 'same-origin' };
 export function check(host, method, rawUrl) {       // restituisce {status} oppure {file}; separata dal server per poterla provare nei test

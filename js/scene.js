@@ -12,7 +12,7 @@ export const V = {
   env: 'country', gesture: null, bubble: null,
   lat: 0.5, latT: 0.5, rest: 0.5, inv: 0, auto: true, jump: 0, jumpT: -1, shake: 0, hitT: 0, events: [], bike: 0,   // lat 0.5 = corsia di destra (la strada va da -1 a +1)
   kit: { jersey: '#ff7a1a', jersey2: '#ffd070', pattern: 'zip', shorts: '#1a1a28', helmet: '#f4f1ff', skin: '#f0b890', emblem: '', emblemColor: '#ffffff', text: '', img: null },
-  bikeC: null, traffic: true, hazards: true, gestures: true
+  bikeC: null, traffic: true, hazards: true, gestures: true, clearAt: null, _ld: null
 };
 export let SCALE = 3;                      // risoluzione interna 960x540: bordi morbidi, niente pixel grossi
 let ZM = 1;                                  // zoom: 1ª persona più vicina alla strada
@@ -249,6 +249,7 @@ function collect(cxAt, rh, H) {
   for (const m of movers) {
     if (!V.traffic) break;
     let zabs = m.z0 + m.vel * V.time; zabs = ((zabs % TRACK) + TRACK) % TRACK;
+    if (hiddenAt(zabs)) continue;
     const dz = (((zabs - V.dist) % TRACK) + TRACK) % TRACK;
     if (m.type === 'car' && !m.front) {
       if (dz > 120) { m.passed = false; }
@@ -270,12 +271,14 @@ function collect(cxAt, rh, H) {
   }
   for (const h of hazards) {
     if (!V.hazards) break;
+    if (hiddenAt(h.z)) continue;
     const dz = (((h.z - V.dist) % TRACK) + TRACK) % TRACK; if (dz < 3 || dz > 200) continue;
     const p = pOf(dz); if (p <= 0.01) continue;
     push(dz, () => { const yb = H + p * (180 - H), rwid = rh(p); drawHazard(h, p, lane(p, cxAt(p), rwid, h.lane), yb, rwid); });
     if (h.type === 'works') { const d2 = dz + 40; if (d2 < 200) { const p2 = pOf(d2); push(d2, () => { const yb = H + p2 * (180 - H); drawSign(p2, cxAt(p2) + (rh(p2) + 6 + p2 * 10), yb); }); } }
   }
   for (const x of crossers) {
+    if (hiddenAt(x.zc)) continue;
     const dz = (((x.zc - V.dist) % TRACK) + TRACK) % TRACK; if (dz < 8 || dz > 200) continue;
     const th = V.theme === 'auto' ? (ROUTE ? ROUTE.env(V.dist + dz) : envAt(x.zc)) : V.theme; if (th === 'mountains') continue;
     const p = pOf(dz); if (p <= 0.01) continue;
@@ -302,14 +305,24 @@ export function moverLane(m, rel) {
 }
 /** posizione laterale (−3…+3) di un'auto che attraversa; in allenamento le auto in attesa restano ferme sul bordo */
 export function crosserU(x) { return ((((V.time - x.hold) * x.vx + x.ph) % 6) + 6) % 6 - 3; }
+/* Partenza libera: dopo ogni partenza o ripartenza (salto di posizione) la strada intorno al ciclista resta senza ostacoli, auto e incroci con auto,
+   così non si parte mai dentro un cantiere o davanti a un camion che copre tutto lo schermo. La zona sparisce da sola quando il ciclista l'ha lasciata. */
+const CLEAR_BACK = 20, CLEAR_AHEAD = 50;
+export function clearStart(dist = V.dist) { V.clearAt = dist; V._ld = dist; }
+/** true se la posizione z (m lungo il percorso, anche oltre un giro) cade nella zona libera della partenza */
+export function hiddenAt(z) { if (V.clearAt == null) return false; const rel = wrapD(z - V.clearAt); return rel >= -CLEAR_BACK && rel <= CLEAR_AHEAD; }
+/** true se un pezzo di mondo centrato in mid (mezza lunghezza half) tocca la zona libera */
+export function zoneTouches(mid, half, at = V.clearAt) { if (at == null) return false; const rel = wrapD(mid - at); return rel >= -CLEAR_BACK - half && rel <= CLEAR_AHEAD + half; }
 export function updateWorld(dt) {
+  if (V._ld == null || Math.abs(V.dist - V._ld) > 15) clearStart(V.dist);        // primo fotogramma o salto di posizione (partenza, ripartenza dal checkpoint, nuovo percorso)
+  V._ld = V.dist; if (V.clearAt != null && V.dist - V.clearAt > CLEAR_AHEAD + 15) V.clearAt = null;
   if (V.jumpT >= 0) { V.jumpT += dt; const d = 0.75, k = V.jumpT / d; if (k >= 1) { V.jumpT = -1; V.jump = 0; V.events.push({ type: 'land' }); } else V.jump = 4 * 20 * k * (1 - k); }
   if (V.hitT > 0) V.hitT -= dt;
   if (V.inv > 0) V.inv -= dt;
   const R = V.lat * 0.7, hit = what => { if (V.inv > 0) return; V.events.push({ type: 'hit', what }); V.hitT = 0.5; V.shake = 0.4; V.inv = 1.2; };
   let steerT = 0, steering = false;
   for (const h of hazards) {
-    if (!V.hazards) { h.prev = 999; continue; }
+    if (!V.hazards || hiddenAt(h.z)) { h.prev = 999; continue; }
     const dz = (((h.z - V.dist) % TRACK) + TRACK) % TRACK, sd = dz > TRACK / 2 ? dz - TRACK : dz;
     if (V.auto) {                                  // allenamento: li evita da solo, senza mai toccarli
       if (V.running && sd < 26 && sd > -2) {
@@ -329,6 +342,7 @@ export function updateWorld(dt) {
   }
   if (V.traffic) {
     for (const x of crossers) {                    // auto agli incroci
+      if (hiddenAt(x.zc)) continue;
       const rel = wrapD(x.zc - V.dist); if (rel < -3 || rel > 110) continue;
       const u = crosserU(x);
       if (V.auto) {
@@ -338,7 +352,7 @@ export function updateWorld(dt) {
       } else if (V.running && Math.abs(rel) < 1.6 && Math.abs(u * 1.2 - R) < 0.33) hit('car');
     }
     if (!V.auto && V.running) for (const m of movers) {            // gioco: auto, ciclisti e trattori sulla strada
-      const hw = HALF_W[m.type]; if (!hw) continue;
+      const hw = HALF_W[m.type]; if (!hw || hiddenAt(m.z0 + m.vel * V.time)) continue;
       if (Math.abs(moverRel(m)) < 1.8 && Math.abs(m.lane - R) < hw + 0.07) hit(m.type === 'car' ? 'car' : m.type === 'bike' ? 'bike' : 'tractor');
     }
   }
@@ -633,13 +647,14 @@ export function drawSide() {
 export { gradeOf };
 
 /* ---------- esportazioni per il renderer 3D ---------- */
-export { hazards, movers, crossers, TRACK, XING, envAt };
+export { hazards, movers, crossers, TRACK, XING, envAt, CLEAR_BACK, CLEAR_AHEAD };
 /** il pezzo di rete del traffico che non disegna: clacson e sorpassi (stessa logica del motore 2D) */
 export function trafficTick() {
   if (!V.traffic) return;
   for (const m of movers) {
     if (m.type !== 'car') continue;
     let zabs = m.z0 + m.vel * V.time; zabs = ((zabs % TRACK) + TRACK) % TRACK;
+    if (hiddenAt(zabs)) continue;
     const dz = (((zabs - V.dist) % TRACK) + TRACK) % TRACK;
     if (!m.front) {
       if (dz > 120) m.passed = false;
