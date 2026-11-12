@@ -28,6 +28,8 @@ function driveTraffic(seconds, speed, auto, input = null) {
     V.time += dt; V.dist += speed * dt; if (input != null) V.latT = input; G.updateWorld(dt); out.hits.push(...G.drainEvents().filter(e => e.type === 'hit'));
     const R = V.lat * 0.7;
     for (const x of G.crossers) if (Math.abs(wrap(x.zc - V.dist)) < 1.6 && Math.abs(G.crosserU(x) * 1.2 - R) < 0.33) out.overlaps++;
+    for (const c of G.autos) if (c.vis && Math.abs(wrap(c.z - V.dist)) < 1.8 && Math.abs(c.m / 3.8 - R) < 0.35) out.overlaps++;
+    for (const h of G.hazards) if (h.type === 'island' && Math.abs(wrap(h.z - V.dist)) < 2.2 && Math.abs(R - h.lane) < h.w / 2 + 0.08) out.overlaps++;
     for (const m of G.movers) { const hw = HW[m.type]; if (!hw) continue; const rel = G.moverRel(m); if (Math.abs(rel) < 1.8 && Math.abs(G.moverLane(m, rel) - R) < hw + 0.05) out.overlaps++; }
   }
   return out;
@@ -170,9 +172,55 @@ test('partenza libera, gioco: partendo in mezzo a un incrocio o addosso a un\'au
   for (const m of G.movers) {
     if (m.type === 'ped') continue;
     for (const zone of [false, true]) {
-      startAt(m.z0 - 0.5, { lat: m.lane / 0.7, zone }); G.V.time = 0.001;
+      startAt(m.z0 - 0.5, { lat: 0, zone }); G.V.time = 0.001; G.V.lat = G.V.latT = G.moverLane(m, 0) / 0.7;
       const n = runFrames(0.3, 0).filter(e => e.type === 'hit').length;
       if (!zone) assert.ok(n >= 1, 'controllo: senza zona libera ' + m.type + ' a ' + m.z0 + ' colpisce'); else assert.equal(n, 0, m.type + ' a ' + m.z0 + ' non colpisce se si parte lì');
     }
   }
+});
+
+/* ---- rotonde e immissioni ---- */
+const F1 = t => G.features.find(f => f.type === t), autosOf = f => G.autos.filter(c => c.f === f);
+const saveAutos = () => G.autos.map(c => ({ ...c })), restoreAutos = sv => sv.forEach((o, i) => Object.assign(G.autos[i], o));
+test("rotonda: le auto girano in senso antiorario sulla corsia esterna attorno all isola", () => {
+  const f = F1("round"), sv = saveAutos(), V = G.V;
+  Object.assign(V, { dist: f.zc - 400, lat: 0.5, latT: 0.5, jump: 0, jumpT: -1, inv: 0, running: false, auto: false, traffic: true, hazards: false, time: 0, speed: 0, events: [] }); V._ld = null;
+  const c = autosOf(f)[0], p0 = c.phi; let maxErr = 0;
+  for (let t = 0; t < 6; t += 1 / 30) { V.time += 1 / 30; G.updateWorld(1 / 30); for (const a of autosOf(f)) maxErr = Math.max(maxErr, Math.abs(Math.hypot(a.z - f.zc, a.m + 0.95) - 7.2)); }
+  const adv = ((c.phi - p0) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI); restoreAutos(sv);
+  assert.ok(maxErr < 0.01, "sempre sul cerchio: " + maxErr); assert.ok(adv > 2.5 && adv < 6, "avanza in senso antiorario: " + adv);
+});
+test("rotonda, allenamento: chi gira aspetta il ciclista prima del tratto che attraversa la sua corsia, poi riparte", () => {
+  const f = F1("round"), sv = saveAutos(), V = G.V, c = autosOf(f)[0], other = autosOf(f)[1];
+  c.phi = -1.5; other.phi = 1.6;
+  Object.assign(V, { dist: f.zc - 60, lat: 0.5, latT: 0.5, jump: 0, jumpT: -1, inv: 0, running: true, auto: true, traffic: true, hazards: false, time: 0, speed: 8, events: [] }); V._ld = null;
+  let held = 0, overlaps = 0; const dt = 1 / 60;
+  for (let t = 0; t < 3; t += dt) { V.time += dt; V.dist += 8 * dt; G.updateWorld(dt); G.drainEvents(); if (Math.abs(c.phi + 1.45) < 0.03) held++; }
+  for (let t = 0; t < 8; t += dt) { V.time += dt; V.dist += 8 * dt; G.updateWorld(dt); G.drainEvents(); for (const a of autosOf(f)) if (Math.abs(a.z - V.dist) < 1.8 && Math.abs(a.m / 3.8 - V.lat * 0.7) < 0.35) overlaps++; }
+  const moved = c.phi > -1.3; restoreAutos(sv);
+  assert.ok(held > 150, "ferma mentre il ciclista arriva: " + held); assert.equal(overlaps, 0, "mai addosso al ciclista"); assert.ok(moved, "riparte dopo il passaggio");
+});
+test("rotonda: nel gioco l isola si urta e costa una vita, in allenamento ci si passa accanto senza toccarla", () => {
+  const f = F1("round"), sv = saveAutos();
+  for (const [auto, lat, atteso] of [[false, -0.36, true], [true, 0.5, false]]) {
+    for (const a of autosOf(f)) a.phi = 0;
+    startAt(f.zc - 70, { auto, lat }); G.V.hazards = true;
+    const n = runFrames(10).filter(e => e.type === "hit" && e.what === "island").length;
+    assert.equal(n > 0, atteso, (auto ? "allenamento" : "gioco") + ": colpi all isola " + n);
+  }
+  restoreAutos(sv);
+});
+test("immissione, allenamento: chi arriva dalla corsia di accelerazione aspetta in fondo che tu sia passato, poi si immette", () => {
+  const f = F1("merge"), sv = saveAutos(), V = G.V, c = autosOf(f)[0], ze = f.zc + 12; let stopped = false, overlaps = 0;
+  for (const a of autosOf(f)) Object.assign(a, { st: "wait", t: 999, vis: false });
+  Object.assign(c, { st: "ramp", vis: true, v: 8, z: f.zc - 40, m: 5.8, h: 0, t: 0 });
+  Object.assign(V, { dist: f.zc - 70, lat: 0.5, latT: 0.5, jump: 0, jumpT: -1, inv: 0, running: true, auto: true, traffic: true, hazards: false, time: 0, speed: 8, events: [] }); V._ld = null;
+  const dt = 1 / 60;
+  for (let t = 0; t < 15; t += dt) {
+    V.time += dt; V.dist += 8 * dt; G.updateWorld(dt); G.drainEvents();
+    if (c.st === "ramp" && c.v < 0.5 && c.z > ze - 3 && V.dist < ze - 20) stopped = true;
+    if (c.vis && Math.abs(c.z - V.dist) < 1.8 && Math.abs(c.m / 3.8 - V.lat * 0.7) < 0.35) overlaps++;
+  }
+  const st = c.st; restoreAutos(sv);
+  assert.ok(stopped, "si ferma in fondo alla corsia mentre il ciclista arriva"); assert.equal(overlaps, 0, "mai addosso al ciclista"); assert.ok(st === "merge" || st === "free", "dopo il passaggio si immette: " + st);
 });

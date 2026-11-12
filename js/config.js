@@ -7,4 +7,4 @@ export const MS_CLIENT_ID = '946102aa-63b4-4285-8700-8b6a231c73b0';
 // Dove sta il codice sorgente (l'AGPL chiede di offrirlo a chi usa il sito): chi pubblica una copia modificata mette qui il proprio repository.
 export const REPO_URL = 'https://github.com/EG99999/ciclomulino-app';
 // Versione della build: finisce nella prima riga del log di debug, così so sempre con quale codice è stato registrato.
-export const BUILD = '2026-11-12 incroci-1';
+export const BUILD = '2026-11-12 rotonde-1';

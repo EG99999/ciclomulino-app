@@ -36,7 +36,7 @@ export function createScreens(api) {
       <div class="logowrap"><canvas id="logoCv" aria-label="Open Trainer"></canvas></div>
       <div class="homeRow"><button class="mc big" id="hGo">VAI</button><button class="mc sq" id="hSet" title="Impostazioni" aria-label="Impostazioni">⚙</button></div>
       <div class="homeSub"><button class="mc small" data-go="history">STORICO</button><button class="mc small" id="hTut">TUTORIAL</button></div>
-      <div class="ver">Open Trainer · versione di prova${api.S.name ? ' · ciao ' + esc(api.S.name) : ''} · <a href="${REPO_URL}" target="_blank" rel="noopener noreferrer">codice sorgente (AGPL-3.0)</a></div></div>`;
+      <div class="ver">Open Trainer · versione ${esc(BUILD)}${api.S.name ? ' · ciao ' + esc(api.S.name) : ''} · <a href="${REPO_URL}" target="_blank" rel="noopener noreferrer">codice sorgente (AGPL-3.0)</a></div></div>`;
     const draw = () => { const cv = $('logoCv'); if (cv) drawLogo(cv, Math.min(14, Math.max(5, Math.floor(Math.min(innerWidth * 0.82, 880) / 44)))); };
     draw(); if (onResize) removeEventListener('resize', onResize); onResize = draw; addEventListener('resize', onResize);
     $('hGo').onclick = () => show('select'); $('hSet').onclick = () => show('settings'); $('hTut').onclick = () => api.startTutorial(); wire();

@@ -145,13 +145,27 @@ function buildWorld() {
     }
   }
 }
+/* ---------- rotonde e immissioni ---------- */
+const RH = 3.8, RING_R = 7.2, RING_X = -0.95;       // mezza strada (m); raggio della corsia di circolazione e posizione del centro della rotonda (m, + a destra)
+const FEATS = [['round', 720], ['merge', 1440], ['round', 2160], ['merge', 2880], ['merge', 3420]], AC = ['#d94a4a', '#3f78d6', '#e8c24a', '#4aa86a', '#f4f1ff', '#8a8a99', '#c96ad8'];
+export const features = FEATS.map(([type, zc], k) => ({ type, zc, k, rel: 999 }));
+/** auto delle rotonde (girano attorno all'isola) e delle immissioni (partono dalla strada laterale, accelerano sulla corsia e si immettono): z lungo il percorso, m laterale (+ a destra), h svolta (+ a sinistra) */
+export const autos = [];
+for (const f of features) for (let n = 0; n < 2; n++) {
+  const c = { f, kind: f.type === 'round' ? 'ring' : 'ramp', col: AC[(f.k * 3 + n) % AC.length], k: 9300 + f.k * 2 + n, z: 0, m: 0, h: 0, vis: true };
+  if (c.kind === 'ring') Object.assign(c, { phi: n * Math.PI + hsh(9100 + f.k) * 2, w: 0.68 + hsh(9200 + f.k * 2 + n) * 0.12 });
+  else Object.assign(c, { st: 'wait', t: n * 11 + hsh(9400 + f.k) * 8, s: 0, v: 0, mt: 0, vis: false });
+  autos.push(c);
+}
 const hazards = [];
 for (let i = 0; i < TRACK / 150; i++) {
   let z = i * 150 + 40 + hsh(8000 + i) * 70;
   const x = (((z - 360) % XING) + XING) % XING; if (x < 14 || x > XING - 14) z += 30;
+  for (const f of features) { const dd = (((z - f.zc + TRACK / 2) % TRACK) + TRACK) % TRACK - TRACK / 2; if (Math.abs(dd) < 70) z += 90; }      // niente buche e cantieri dentro rotonde e immissioni
   const works = hsh(8100 + i) < 0.3, lanePos = works ? (hsh(8200 + i) < 0.5 ? -1 : 1) * 0.45 : (hsh(8300 + i) - 0.35) * 0.9;
   hazards.push({ type: works ? 'works' : 'pothole', z, lane: lanePos, w: works ? 0.85 : 0.22, k: i, prev: 999, done: false });
 }
+for (const f of features) if (f.type === 'round') hazards.push({ type: 'island', z: f.zc, lane: -0.25, w: 0.8, k: 800 + f.k, prev: 999, done: false });      // l'isola centrale: in allenamento ci si passa a destra, nel gioco urtarla costa una vita
 buildWorld();
 
 /* ---------- uccelli e nuvole (nello schermo) ---------- */
@@ -191,7 +205,16 @@ function drawObj(o, p, x, yb, th) {
 }
 function drawHazard(h, p, x, yb, rw) {
   const S = 36 * p * ZM;
-  if (h.type === 'pothole') { const w = .55 * S + rw * .06; R(x - w, yb - .17 * S, w * 2, .17 * S, '#15131c'); R(x - w * .8, yb - .27 * S, w * 1.6, .1 * S, '#1c1a26'); R(x - w * 1.05, yb - .12 * S, w * .25, .12 * S, 'rgba(0,0,0,.35)'); }
+  if (h.type === 'pothole') {                     // buca vera: bordo di asfalto sbriciolato, parete lontana più chiara, fondo scuro, a volte una pozzanghera
+    const k = hsh(h.z * 0.37 + 5), w = (.6 + k * .35) * S + rw * .05, hh = .26 * S;
+    const ell = (cx, yTop, ww, hgt, col) => { const n = 5; for (let i = 0; i < n; i++) { const t = (2 * i + 1) / n - 1, half = ww * Math.sqrt(Math.max(0, 1 - t * t)); R(cx - half, yTop + hgt * i / n, half * 2, hgt / n + .5, col); } };
+    ell(x, yb - hh * 1.05, w * 1.12, hh * 1.05, '#4b4b57');
+    ell(x, yb - hh * 1.0, w * .95, hh * .95, '#22202b');
+    R(x - w * .62, yb - hh * 1.0, w * 1.24, Math.max(1, hh * .16), '#6b6052');
+    ell(x + w * .04, yb - hh * .78, w * .7, hh * .6, '#0b0a10');
+    if (k > .45) R(x - w * .25, yb - hh * .5, w * .4, Math.max(1, hh * .12), '#3b4b60');
+    R(x - w * 1.25, yb - .05 * S, w * .28, Math.max(1, S * .05), '#6f6f7c'); R(x + w * 1.0, yb - .09 * S, w * .22, Math.max(1, S * .06), '#6f6f7c'); R(x + w * .6, yb - hh * 1.25, w * .2, Math.max(1, S * .04), '#6f6f7c');
+  }
   else {
     const w = h.w * rw;
     R(x - w, yb - .9 * S, w * 2, .22 * S, '#f4f1ff'); for (let i = 0; i < 8; i++) if (i % 2) R(x - w + i * w / 4, yb - .9 * S, w / 4, .22 * S, '#e8433a');
@@ -291,7 +314,7 @@ function collect(cxAt, rh, H) {
   }
   for (const h of hazards) {
     if (!V.hazards) break;
-    if (hiddenAt(h.z)) continue;
+    if (h.type === 'island' || hiddenAt(h.z)) continue;
     const dz = (((h.z - V.dist) % TRACK) + TRACK) % TRACK; if (dz < 3 || dz > 200) continue;
     const p = pOf(dz); if (p <= 0.01) continue;
     push(dz, () => { const yb = H + p * (180 - H), rwid = rh(p); drawHazard(h, p, lane(p, cxAt(p), rwid, h.lane), yb, rwid); });
@@ -311,6 +334,37 @@ function collect(cxAt, rh, H) {
     const p = pOf(dz); if (p <= 0.01) continue;
     push(dz, () => { const yb = H + p * (180 - H), rwid = rh(p), cx = cxAt(p); drawStopLine(p, cx, yb, rwid); drawJunction(jn, p, cx + rwid * 1.18, yb); });
   }
+  /* rotonde e immissioni: asfalto, isola, corsia di accelerazione e le auto */
+  const gs = (z1, z2, mL, mR, col) => {            // rettangolo di terreno tra due distanze lungo il percorso e due posizioni laterali (m, + a destra)
+    let a = (((z1 - V.dist) % TRACK) + TRACK) % TRACK, b = a + (z2 - z1); if (a > TRACK - 40) { a -= TRACK; b -= TRACK; }
+    const n = Math.max(3.2, Math.min(a, b)), fr = Math.min(215, Math.max(a, b)); if (fr <= n + 0.01) return;
+    const pn = pOf(n), pf = pOf(fr), pm = (pn + pf) / 2;
+    push(fr + 0.01, () => { const yn = H + pn * (180 - H), yf = H + pf * (180 - H), xl = cxAt(pm) + mL / RH * rh(pm), xr = cxAt(pm) + mR / RH * rh(pm); R(xl, yf, xr - xl, yn - yf + 0.7, col); });
+  };
+  const disc = (zc, mc, rad, col, n) => { for (let i = 0; i < n; i++) { const a = -rad + 2 * rad * i / n, b = -rad + 2 * rad * (i + 1) / n, mid = (a + b) / 2, hw = Math.sqrt(Math.max(0, rad * rad - mid * mid)); gs(zc + a, zc + b, mc - hw, mc + hw, col); } };
+  const asph = palette().road1;
+  for (const f of features) {
+    const rel = wrapD(f.zc - V.dist); if (rel < -30 || rel > 215) continue;
+    const th = V.theme === 'auto' ? (ROUTE ? ROUTE.env(V.dist + rel) : envAt(f.zc)) : V.theme; if (th === 'mountains') continue;
+    if (f.type === 'round') {
+      disc(f.zc, RING_X, 9.8, asph, 14); gs(f.zc - 4, f.zc + 4, 9, 45, asph); gs(f.zc - 4, f.zc + 4, -45, -9, asph);
+      disc(f.zc, RING_X, 1.9, '#d2d2da', 6); disc(f.zc, RING_X, 1.55, '#4f9a45', 6);
+      if (rel > 4) { const p = pOf(rel); push(rel - 0.3, () => { const S = 36 * p * ZM, yb = H + p * (180 - H), x = cxAt(p) + RING_X / RH * rh(p); R(x - .12 * S, yb - 1.6 * S, .25 * S, 1.6 * S, '#6b4a2b'); R(x - .95 * S, yb - 3.2 * S, 1.9 * S, 1.8 * S, '#2f7a30'); R(x - .6 * S, yb - 4.1 * S, 1.2 * S, 1.0 * S, '#3f8f3a'); }); }
+    } else {
+      const zs = f.zc - 98; gs(zs - 8, zs, 6, 46, asph);
+      for (let z = zs - 4; z < f.zc + 12; z += 6) { gs(z, z + 6, 3.9, 7.7, asph); if ((((z - zs + 4) / 6) | 0) % 2 === 0) gs(z, z + 3, 3.75, 3.95, '#f4f4f4'); }
+    }
+  }
+  for (const c of autos) {
+    if (!c.vis || hiddenAt(c.z)) continue;
+    const dz = (((c.z - V.dist) % TRACK) + TRACK) % TRACK; if (dz < 5 || dz > 215) continue;
+    const th = V.theme === 'auto' ? (ROUTE ? ROUTE.env(V.dist + dz) : envAt(c.f.zc)) : V.theme; if (th === 'mountains') continue;
+    const p = pOf(dz); if (p <= 0.01) continue;
+    push(dz - 0.4, () => {
+      const yb = H + p * (180 - H), x = cxAt(p) + c.m / RH * rh(p); if (x < -80 || x > 400) return; const ch = Math.cos(c.h);
+      if (ch > 0.55) drawCar(p, x, yb, { col: c.col, k: c.k }, false); else if (ch < -0.55) drawCar(p, x, yb, { col: c.col, k: c.k }, true); else drawCarSide(p, x, yb, c.col, Math.sin(c.h) < 0);
+    });
+  }
   return list;
 }
 /** logica del mondo: ostacoli, salto, sterzo automatico. dt in secondi reali. */
@@ -324,10 +378,10 @@ const wrapD = d => ((d + TRACK / 2) % TRACK + TRACK) % TRACK - TRACK / 2;
 export function moverRel(m) { return wrapD(m.z0 + m.vel * V.time - V.dist); }
 /** corsia reale di un mezzo: in allenamento si sposta per passare largo al ciclista */
 export function moverLane(m, rel) {
-  const hw = HALF_W[m.type]; if (!V.auto || !hw) return m.lane;
-  const R = V.lat * 0.7, gap = hw + 0.13, d = m.lane - R, k = 1 - Math.abs(rel) / 30;
-  if (k <= 0 || Math.abs(d) >= gap) return m.lane;
-  return m.lane + (R + (d >= 0 ? gap : -gap) - m.lane) * Math.min(1, k * 2);
+  const hw = HALF_W[m.type], base = islandLane(m, m.lane); if (!V.auto || !hw) return base;
+  const R = V.lat * 0.7, gap = hw + 0.13, d = base - R, k = 1 - Math.abs(rel) / 30;
+  if (k <= 0 || Math.abs(d) >= gap) return base;
+  return base + (R + (d >= 0 ? gap : -gap) - base) * Math.min(1, k * 2);
 }
 /** posizione laterale (−3…+3) di un'auto che attraversa; in allenamento le auto in attesa restano ferme sul bordo */
 /** posizione laterale (unità di 1,2 corsie; ±1 circa = bordo strada) di un'auto che attraversa: ognuna guida da sola */
@@ -361,6 +415,50 @@ function stepCrosser(x, dt) {
   for (const o of [x.lead, x.follower]) if (o) { const q = o.u * d; if (q > p) lim = Math.min(lim, q - 1.2); }      // due auto dello stesso lato non si sovrappongono: chi sta dietro si accoda
   x.u = d * Math.max(p, Math.min(np, lim));
 }
+/* ---------- rotonde e immissioni: come girano e si fermano le auto ---------- */
+function featureOn(f) { const th = V.theme === 'auto' ? (ROUTE ? ROUTE.env(V.dist + f.rel) : envAt(f.zc)) : V.theme; return th !== 'mountains'; }
+const normA = a => { a %= 2 * Math.PI; return a > Math.PI ? a - 2 * Math.PI : a <= -Math.PI ? a + 2 * Math.PI : a; };
+const inWin = a => { const b = Math.abs(normA(a)); return b > 0.85 && b < 1.45; };            // i due tratti della rotonda che attraversano la corsia di chi pedala
+/** corsia di un mezzo che passa a sinistra dell'isola della rotonda (si sposta man mano che si avvicina) */
+function islandLane(m, lane) {
+  const hw = HALF_W[m.type]; if (!hw) return lane;
+  for (const f of features) if (f.type === 'round') {
+    const a = Math.abs(wrapD(m.z0 + m.vel * V.time - f.zc)); if (a >= 24 || Math.abs(lane + 0.25) >= 0.43 + hw) continue;
+    lane += (-0.7 - hw - lane) * clamp((24 - a) / 12, 0, 1);
+  }
+  return lane;
+}
+function stepAuto(c, dt) {
+  const f = c.f;
+  if (c.kind === 'ring') {
+    const np = c.phi + c.w * dt; let hold = !inWin(c.phi) && inWin(np) && V.auto && f.rel > -16 && f.rel < 110 && f.rel / Math.max(V.speed, 1) < 9;      // in allenamento chi gira aspetta il ciclista
+    for (const o of autos) if (o !== c && o.f === f && o.kind === 'ring') { const d = normA(o.phi - np); if (d > 0 && d < 0.8) hold = true; }       // e non tampona chi lo precede
+    if (!hold) c.phi = normA(np);
+    c.z = f.zc + RING_R * Math.sin(c.phi); c.m = RING_X + RING_R * Math.cos(c.phi); c.h = c.phi; return;
+  }
+  const zs = f.zc - 94, ze = f.zc + 12;
+  if (c.st === 'wait') { c.vis = false; c.t -= dt; const r = wrapD(zs - V.dist); if (c.t <= 0 && (r > 180 || r < -100)) { c.st = 'in'; c.s = 0; c.vis = true; } return; }
+  if (c.st === 'in') {                                                           // dalla strada laterale alla corsia di accelerazione, in curva
+    c.s = Math.min(1, c.s + 5.5 * dt / 55); const t = c.s, q = 1 - t;
+    c.m = q * q * 40 + 2 * q * t * 5.8 + t * t * 5.8; c.z = q * q * (zs - 4) + 2 * q * t * (zs - 4) + t * t * (zs + 10); c.h = Math.atan2(68.4 * q, 28 * t);
+    if (t >= 1) { c.st = 'ramp'; c.v = 5.5; c.h = 0; } return;
+  }
+  const r2 = wrapD(ze - V.dist), blocked = V.auto && r2 > -12 && r2 / Math.max(V.speed, 1) < 12;     // in allenamento chi si immette lascia passare il ciclista
+  if (c.st === 'ramp') {
+    const vmax = blocked ? Math.sqrt(2 * 3.5 * Math.max(0, ze - c.z)) : 12;
+    c.v = Math.min(c.v + 1.6 * dt, vmax); c.z = Math.min(c.z + c.v * dt, blocked ? ze : 1e9); c.m = 5.8; c.h = 0;
+    if (!blocked && c.z >= ze - 18) { c.st = 'merge'; c.mt = 0; } return;
+  }
+  if (c.st === 'merge') {
+    c.mt += dt; const k = Math.min(1, c.mt / 3.5), dm = -6.5 * 6 * k * (1 - k) / 3.5;
+    c.v = Math.min(c.v + 1.6 * dt, 12); c.z += c.v * dt; c.m = 5.8 - 6.5 * k * k * (3 - 2 * k); c.h = Math.atan2(-dm, c.v);
+    if (k >= 1) { c.st = 'free'; c.h = 0; } return;
+  }
+  c.v = Math.min(c.v + 1.6 * dt, 12.5); c.z += c.v * dt; c.h = 0;
+  { const R = V.lat * 0.7, rel = wrapD(c.z - V.dist), d = -0.18 - R, k = 1 - Math.abs(rel) / 30; let lane = -0.18;      // come ogni auto sulla strada: passa larga se il ciclista è vicino
+    if (V.auto && k > 0 && Math.abs(d) < 0.43) lane += (R + (d >= 0 ? 0.43 : -0.43) + 0.18) * Math.min(1, k * 2); c.m = lane * RH; }
+  const d = wrapD(c.z - V.dist); if (d > 260 || d < -80) { c.st = 'wait'; c.t = 6 + hsh(c.k + Math.floor(V.time)) * 10; c.vis = false; }
+}
 /* Partenza libera: dopo ogni partenza o ripartenza (salto di posizione) la strada intorno al ciclista resta senza ostacoli, auto e incroci con auto,
    così non si parte mai dentro un cantiere o davanti a un camion che copre tutto lo schermo. La zona sparisce da sola quando il ciclista l'ha lasciata. */
 const CLEAR_BACK = 20, CLEAR_AHEAD = 50;
@@ -373,6 +471,7 @@ export function updateWorld(dt) {
   if (V._ld == null || Math.abs(V.dist - V._ld) > 15) clearStart(V.dist);        // primo fotogramma o salto di posizione (partenza, ripartenza dal checkpoint, nuovo percorso)
   V._ld = V.dist; if (V.clearAt != null && V.dist - V.clearAt > CLEAR_AHEAD + 15) V.clearAt = null;
   for (const jn of junctions) jn.rel = wrapD(jn.zc - V.dist);
+  for (const f of features) f.rel = wrapD(f.zc - V.dist);
   if (V.auto) for (const jn of junctions) if (jn.kind === 'light') {       // allenamento: il semaforo si fa trovare verde quando arrivi
     if (jn.rel > 0 && jn.rel < 215 && !jn.armed) { jn.armed = true; jn.lo = 8 - V.time - jn.rel / Math.max(V.speed, 3); } else if (jn.rel < -20 || jn.rel > 300) jn.armed = false;
   }
@@ -387,7 +486,7 @@ export function updateWorld(dt) {
     if (V.auto) {                                  // allenamento: li evita da solo, senza mai toccarli
       if (V.running && sd < 26 && sd > -2) {
         const lo = h.lane - h.w / 2 - 0.13, hi = h.lane + h.w / 2 + 0.13;
-        if (h.type === 'works' && R > lo && R < hi) { steering = true; const t = (R - lo < hi - R || hi > 0.8) ? lo : hi; steerT = t / 0.7; }
+        if ((h.type === 'works' || h.type === 'island') && R > lo && R < hi) { steering = true; const t = (R - lo < hi - R || hi > 0.8) ? lo : hi; steerT = t / 0.7; }
         if (h.type === 'pothole' && Math.abs(R - h.lane) < h.w / 2 + 0.1 && sd < Math.max(5, V.speed * 0.4 + 1) && V.jumpT < 0 && sd > 0.5) jump();
       }
       h.prev = dz; continue;
@@ -411,9 +510,13 @@ export function updateWorld(dt) {
       }
       jn.prev = jn.rel;
     }
+    for (const c of autos) {                       // rotonde e immissioni: auto che girano, aspettano e si immettono
+      stepAuto(c, dt);
+      if (!V.auto && V.running && c.vis && !hiddenAt(c.z) && featureOn(c.f) && Math.abs(wrapD(c.z - V.dist)) < 1.6 && Math.abs(c.m / RH - R) < 0.33) hit('car');
+    }
     if (!V.auto && V.running) for (const m of movers) {            // gioco: auto, ciclisti e trattori sulla strada
       const hw = HALF_W[m.type]; if (!hw || hiddenAt(m.z0 + m.vel * V.time)) continue;
-      if (Math.abs(moverRel(m)) < 1.8 && Math.abs(m.lane - R) < hw + 0.07) hit(m.type === 'car' ? 'car' : m.type === 'bike' ? 'bike' : 'tractor');
+      if (Math.abs(moverRel(m)) < 1.8 && Math.abs(moverLane(m, moverRel(m)) - R) < hw + 0.07) hit(m.type === 'car' ? 'car' : m.type === 'bike' ? 'bike' : 'tractor');
     }
   }
   if (V.auto) V.latT = steering ? clamp(steerT, -1.1, 1.1) : V.rest;

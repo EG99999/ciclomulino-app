@@ -58,7 +58,17 @@ export const DECOR = {
   banner: (m, x, y, z, yaw, k) => { m.box(0.15, 5.5, 0.15, 0x555555, x, y, z); m.box(1.4, 2.2, 0.1, [0xff5a5f, 0x4bc4ff, 0xffcc33][k % 3], x, y + 2.8, z, yaw); }
 };
 export function addHazard(m, h, f) {            // f = {x,y,z,yaw} sulla corsia
-  if (h.type === 'pothole') { m.box(1.1, 0.09, 1.5, 0x14121c, f.x, f.y + 0.09, f.z, f.yaw); m.box(1.5, 0.06, 1.9, 0x1d1b28, f.x, f.y + 0.085, f.z, f.yaw + 0.3); return; }
+  if (h.type === 'island') return;                   // l'isola della rotonda si costruisce con la rotonda
+  if (h.type === 'pothole') {                       // buca vera: schegge d'asfalto, bordo sbriciolato, conca a gradini sempre più scura, parete lontana più chiara, a volte una pozzanghera
+    const sn = Math.sin(f.yaw), cs = Math.cos(f.yaw), rx = -cs, rz = sn, k = Math.abs(Math.sin(f.x * 12.9898 + f.z * 78.233) * 43758.5453) % 1, s = 0.7 + k * 0.45;
+    const put = (a, b, w, hh, d, col, dy, yaw) => m.box(w * s, hh, d * s, col, f.x + rx * a * s + sn * b * s, f.y + dy, f.z + rz * a * s + cs * b * s, f.yaw + yaw);
+    for (let i = 0; i < 7; i++) { const t = i * 0.9 + k * 6; put(Math.cos(t) * 0.85, Math.sin(t) * 0.95, 0.14 + 0.06 * (i % 3), 0.05, 0.12 + 0.1 * (i % 2), 0x6f6f7c, 0.075, t); }
+    put(0, 0, 1.55, 0.04, 1.75, 0x4b4b57, 0.07, 0.25 + k); put(0.12, -0.05, 1.35, 0.04, 1.5, 0x3d3d49, 0.075, -0.2);
+    put(0, 0, 1.15, 0.03, 1.3, 0x22202b, 0.085, 0.12); put(0.05, 0.04, 0.85, 0.03, 0.95, 0x15131c, 0.095, -0.15); put(0, 0.05, 0.55, 0.03, 0.6, 0x0b0a10, 0.105, 0.3);
+    put(0, 0.55, 1.0, 0.1, 0.08, 0x6b6052, 0.1, 0.05);
+    if (k > 0.45) put(-0.1, 0.0, 0.4, 0.02, 0.28, 0x3b4b60, 0.125, 0.4);
+    return;
+  }
   const sn = Math.sin(f.yaw), cs = Math.cos(f.yaw), halfW = h.w * 3.8, rx = -cs, rz = sn;   // destra = (-cos, sin)
   m.box(0.12, 1.1, 0.12, 0x555555, f.x + rx * halfW, f.y, f.z + rz * halfW, f.yaw); m.box(0.12, 1.1, 0.12, 0x555555, f.x - rx * halfW, f.y, f.z - rz * halfW, f.yaw);
   m.box(halfW * 2, 0.32, 0.12, 0xf4f1ff, f.x, f.y + 0.75, f.z, f.yaw + Math.PI / 2 * 0); for (let i = 0; i < 6; i += 2) m.box(halfW / 3, 0.32, 0.14, 0xe8433a, f.x + rx * (-halfW + halfW / 3 * (i + 0.5) * 1), f.y + 0.75, f.z + rz * (-halfW + halfW / 3 * (i + 0.5) * 1), f.yaw);

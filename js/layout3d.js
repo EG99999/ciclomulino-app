@@ -20,6 +20,8 @@ export function decorType(env, r) {
   if (env === 'mountains') return r < .4 ? 'pine' : r < .62 ? 'rock' : r < .72 ? 'goat' : r < .88 ? 'bush' : 'pine';
   return r < .5 ? 'bld' : r < .75 ? 'lamp' : r < .9 ? 'banner' : 'bld';
 }
+/** raggio (m) che ogni elemento occupa attorno al suo centro, ruotato come capita */
+export const DECOR_R = { bld: 6.6, house: 5.2, vine: 4.4, fence: 3.2, tree: 2.7, pine: 2.7, rock: 2.4, hay: 1.9, bush: 1.7, cow: 1.8, sheep: 1.2, goat: 1.2, cyp: 1.3, flower: 1.8, lamp: 1.2, banner: 1.2 };
 /** elenco degli elementi di scenario del pezzo c. opts: { envOf(d), path, amp, quant, lim, density } */
 export function chunkDecor(c, opts) {
   const { envOf, path, amp, quant = 0, lim = 40, density = 7 } = opts, out = [], d0 = c * CH;
@@ -27,7 +29,7 @@ export function chunkDecor(c, opts) {
     const seed = c * 1009 + j * 31, d = d0 + j * density + hsh(seed + 1) * density * 0.9;
     for (let side = -1; side <= 1; side += 2) {
       if (hsh(seed + (side > 0 ? 7 : 3)) < 0.28) continue;                 // non ovunque: lascia respirare il paesaggio
-      const lat = side * (7 + hsh(seed + 11 + side) * (lim - 7)), env = envOf(d), type = decorType(env, hsh(seed + 17 + side * 5));
+      const env = envOf(d), type = decorType(env, hsh(seed + 17 + side * 5)), base = ROAD_HALF + 1.4 + (DECOR_R[type] || 2), lat = side * (base + hsh(seed + 11 + side) * Math.max(6, lim - base));      // mai un edificio o una casa sulla strada: la distanza minima dipende da quanto è grande
       const f = path.frame(d, lat), y = f.y + terrainH(d, lat, amp, quant);
       out.push({ type, env, x: f.x, y, z: f.z, yaw: f.yaw, k: seed + (side > 0 ? 1 : 0), d, lat });
     }

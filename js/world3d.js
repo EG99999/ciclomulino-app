@@ -98,7 +98,7 @@ void main(){
       live.add(k); let l = this.lamps.get(k);
       if (!l) {
         const q = this.path.frame(dc - 9.3, ROAD_HALF + 1.4), g = new THREE.Group(), mats = [];
-        for (let i = 0; i < 3; i++) { const m = new THREE.MeshBasicMaterial({ color: 0x3a3a44 }), b = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.1), m); b.position.set(q.x, q.y + 4.95 - i * 0.5, q.z); b.rotation.y = q.yaw; g.add(b); mats.push(m); }
+        for (let i = 0; i < 3; i++) { const m = new THREE.MeshBasicMaterial({ color: 0x3a3a44 }), b = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.1), m); b.position.set(q.x, q.y + 4.7 - i * 0.5, q.z); b.rotation.y = q.yaw; g.add(b); mats.push(m); }
         this.actors.add(g); l = { g, mats }; this.lamps.set(k, l);
       }
       const L = G.lightOf(jn); ['red', 'yellow', 'green'].forEach((c, i) => l.mats[i].color.setHex(L.main === c ? { red: 0xff3b3b, yellow: 0xffcf33, green: 0x35d36b }[c] : 0x3a3a44));
@@ -130,15 +130,19 @@ void main(){
     const D = new M.Merger();
     for (const dc of chunkCrossings(c, G.XING)) {
       if (this.envOf(dc) === 'mountains') continue; const f = P.frame(dc, 0);
-      D.box(90, 0.06, 8, 0x555566, f.x, f.y + 0.045, f.z, f.yaw + Math.PI / 2);
-      for (let c = -45; c < 45; c += 6) { const lat = c + 3; if (Math.abs(lat) < 6) continue; const th = terrainH(dc, lat, st.amp, st.quant), qq = P.frame(dc, lat); if (th > 0.02) D.box(6.2, 0.08, 8, 0x555566, qq.x, qq.y + th + 0.05, qq.z, qq.yaw + Math.PI / 2); }      // dove il terreno è più alto la strada laterale sale con lui
+      D.box(90, 0.06, 8, 0x555566, f.x, f.y + 0.045, f.z, f.yaw);                                  // la strada laterale: 90 m di larghezza, 8 m lungo la strada
+      for (let c = -45; c < 45; c += 6) { const lat = c + 3; if (Math.abs(lat) < 6) continue; const th = terrainH(dc, lat, st.amp, st.quant), qq = P.frame(dc, lat); if (th > 0.02) D.box(6.2, 0.08, 8, 0x555566, qq.x, qq.y + th + 0.05, qq.z, qq.yaw); }      // dove il terreno è più alto la strada laterale sale con lui
       const jn = G.junctions[(((Math.round((dc - 360) / G.XING)) % G.junctions.length) + G.junctions.length) % G.junctions.length], sl = P.frame(dc - 8, 2.0), q = P.frame(dc - 9, ROAD_HALF + 1.4);
       D.box(3.4, 0.05, 0.5, 0xf4f4f4, sl.x, sl.y + 0.1, sl.z, sl.yaw);          // linea di stop sulla corsia di chi pedala
-      D.box(0.12, 4.0, 0.12, 0x555555, q.x, q.y + 2.0, q.z);                     // palo
-      if (jn.kind === 'light') D.box(0.7, 1.7, 0.5, 0x1b1b22, q.x, q.y + 4.4, q.z, q.yaw);
-      else if (jn.kind === 'stop') { D.box(1.3, 1.3, 0.08, 0xd6232c, q.x, q.y + 4.3, q.z, q.yaw); D.box(1.0, 0.26, 0.1, 0xffffff, q.x, q.y + 4.3, q.z, q.yaw); }
-      else { D.box(1.5, 0.45, 0.08, 0xd6232c, q.x, q.y + 4.6, q.z, q.yaw); D.box(1.0, 0.4, 0.08, 0xd6232c, q.x, q.y + 4.2, q.z, q.yaw); D.box(0.5, 0.35, 0.08, 0xd6232c, q.x, q.y + 3.85, q.z, q.yaw); }
+      D.box(0.12, 5.0, 0.12, 0x555555, q.x, q.y, q.z);                          // palo
+      if (jn.kind === 'light') D.box(0.7, 1.7, 0.5, 0x1b1b22, q.x, q.y + 3.4, q.z, q.yaw);
+      else if (jn.kind === 'stop') { D.box(1.3, 1.3, 0.08, 0xd6232c, q.x, q.y + 3.7, q.z, q.yaw); D.box(1.0, 0.26, 0.1, 0xffffff, q.x, q.y + 4.2, q.z, q.yaw); }
+      else { D.box(1.5, 0.45, 0.08, 0xd6232c, q.x, q.y + 4.55, q.z, q.yaw); D.box(1.0, 0.4, 0.08, 0xd6232c, q.x, q.y + 4.15, q.z, q.yaw); D.box(0.5, 0.35, 0.08, 0xd6232c, q.x, q.y + 3.8, q.z, q.yaw); }
       for (const off of [-6.2, 6.2]) for (let i = -3; i <= 3; i++) { const q = P.frame(dc + off, i * 1.0); D.box(0.55, 0.05, 1.4, 0xf4f4f4, q.x, q.y + 0.1, q.z, q.yaw); }
+    }
+    for (const ft of G.features) {                    // rotonde e immissioni
+      const j0 = Math.ceil((d0 - ft.zc) / G.TRACK), dcf = ft.zc + j0 * G.TRACK; if (dcf < d0 || dcf >= d1 || this.envOf(dcf) === 'mountains') continue;
+      this._buildFeature(D, ft, dcf);
     }
     // ostacoli
     for (const h of chunkHazards(c, G.hazards, G.TRACK)) { if (!V.hazards) break; if (G.hiddenAt(h.d)) continue; const f = P.frame(h.d, h.lane * ROAD_HALF); M.addHazard(D, h, { x: f.x, y: f.y + 0.05, z: f.z, yaw: f.yaw }); if (h.type === 'works') { const q = P.frame(h.d - 40, ROAD_HALF + 2); D.box(0.1, 2.2, 0.1, 0x666666, q.x, q.y, q.z); D.box(1.1, 0.8, 0.1, 0xffd24a, q.x, q.y + 2.2, q.z, q.yaw); } }
@@ -155,6 +159,24 @@ void main(){
     }
     if (st.skirt) { const S2 = new M.Merger(); for (const side of [-1, 1]) { const rr = [], cc = []; for (let d = d0; d <= d1 + 0.01; d += 6) { const f = P.frame(d, side * W), y = f.y + terrainH(d, side * W, st.amp, st.quant); rr.push([[f.x, y, f.z], [f.x, y - 7, f.z]]); cc.push([new THREE.Color(0x73a047), new THREE.Color(Math.floor(d / 6) % 2 ? 0x8a5a3a : 0x7a4e32)]); } S2.strip(rr, cc); } grp.add(S2.mesh(this.matV)); }
     grp.add(T.mesh(this.matV), R.mesh(this.matV), D.mesh(this.matV)); this.world.add(grp); return grp;
+  }
+  /** rotonda (piazza di asfalto, isola con albero, bracci laterali, cartello) o immissione (corsia di accelerazione, riga tratteggiata, strada laterale) */
+  _buildFeature(D, f, dc) {
+    const P = this.path, st = this.style, asph = 0x555566, lift = (d, lat) => Math.max(0, terrainH(d, lat, st.amp, st.quant)) + 0.05;
+    const seg = (d, lat, w, dd, col, dy = 0) => { const q = P.frame(d, lat); D.box(w, 0.07, dd, col, q.x, q.y + lift(d, lat) + dy, q.z, q.yaw); };
+    if (f.type === 'round') {
+      const c0 = P.frame(dc, -0.95), y0 = c0.y + lift(dc, -0.95);
+      for (let k = 0; k < 6; k++) D.box(19.6, 0.07, 8.6, asph, c0.x, y0, c0.z, c0.yaw + k * Math.PI / 6);        // piazza rotonda: sei rettangoli ruotati
+      seg(dc, 27, 36, 8, asph); seg(dc, -27, 36, 8, asph);                                                         // bracci laterali
+      for (let k = 0; k < 3; k++) D.box(3.8, 0.3, 1.5, 0xd2d2da, c0.x, y0 + 0.02, c0.z, c0.yaw + k * Math.PI / 3);    // cordolo dell'isola
+      for (let k = 0; k < 3; k++) D.box(3.3, 0.36, 1.0, 0x4f9a45, c0.x, y0 + 0.03, c0.z, c0.yaw + k * Math.PI / 3);   // erba
+      D.box(0.3, 2.2, 0.3, 0x6b4a2b, c0.x, y0 + 0.3, c0.z); D.box(2.4, 1.8, 2.4, 0x2f7a30, c0.x, y0 + 2.0, c0.z); D.box(1.6, 1.3, 1.6, 0x3f8f3a, c0.x, y0 + 3.7, c0.z);
+      const b = P.frame(dc - 3.4, -0.95); D.box(0.1, 1.6, 0.1, 0x555555, b.x, y0, b.z); D.box(1.7, 0.9, 0.08, 0x1b4fb0, b.x, y0 + 1.5, b.z, b.yaw); D.box(1.1, 0.14, 0.1, 0xffffff, b.x, y0 + 1.9, b.z, b.yaw);   // cartello blu
+    } else {
+      const zs = f.zc - 98;
+      for (let d = zs - 4, i = 0; d < f.zc + 12; d += 6, i++) { seg(d + 3, 5.8, 3.8, 6.2, asph); if (i % 2 === 0) seg(d + 1.5, 3.9, 0.16, 3, 0xf4f4f4, 0.02); }
+      seg(zs - 4, 25, 38, 7, asph);
+    }
   }
   _decorSprite(it) {
     const S = this.sprites, size = { tree: [5, 6.3, S.tree], cyp: [2.2, 6.6, S.cyp], pine: [4.5, 6.8, S.pine], house: [8, 6, S.house], cow: [3, 1.8, S.cow], sheep: [1.8, 1.2, S.sheep], goat: [1.8, 1.4, S.goat], bush: [2.6, 1.7, S.bush], rock: [3.6, 2.2, S.rock], hay: [2.4, 2, S.hay], flower: [2.6, 1.5, S.flower], fence: [5, 1.4, S.fence], vine: [5, 1.6, S.vine], bld: [6 + hsh(it.k) * 3, 12 + hsh(it.k + 5) * 12, S.bld], lamp: [1.6, 5, S.lamp], banner: [1.4, 4.4, S.banner] }[it.type];
@@ -192,6 +214,13 @@ void main(){
       if (!st.sprite) { g.rotation.y = f.yaw + (m.vel < 0 ? Math.PI : 0); const sw = Math.sin(V.time * (m.type === 'ped' ? 6 : 8) + m.k); if (g.userData.legs) g.userData.legs.forEach((l, i) => { l.rotation.x = (i ? -1 : 1) * sw * (m.type === 'ped' ? 0.6 : 0.7); }); }
       else if (m.type === 'ped') g.position.y += Math.abs(Math.sin(V.time * 6 + m.k)) * 0.05;
       if (m.honkUntil > V.time) { if (!ob.honk) { ob.honk = M.bubbleSprite('BEEP!', '#ffd24a'); ob.honk.position.set(0, 2.9, 0); g.add(ob.honk); } } else if (ob.honk) { this._killBubble(ob.honk); ob.honk = null; }
+    }
+    // auto delle rotonde e delle immissioni
+    for (const c of G.autos) {
+      let o = this.cross.get(c); const T3 = G.TRACK, rel = (((c.z - dist + T3 / 2) % T3) + T3) % T3 - T3 / 2;
+      if (!V.traffic || !c.vis || rel < -30 || rel > 200 || G.hiddenAt(c.z) || this.envOf(dist + rel) === 'mountains') { if (o) o.visible = false; continue; }
+      if (!o) { o = st.sprite ? M.sprite(this.sprites.car(c.col, false), 4.4, 2.6) : M.carMesh(new THREE.Color(c.col), false); this.actors.add(o); this.cross.set(c, o); }
+      const f = this.path.frame(dist + rel, c.m); o.visible = true; o.position.set(f.x, f.y + 0.05 + (Math.abs(c.m) > 6 ? Math.max(0, terrainH(dist + rel, c.m, st.amp, st.quant)) : 0), f.z); if (!st.sprite) o.rotation.y = f.yaw + c.h;
     }
     // auto che attraversano
     for (const x of G.crossers) {

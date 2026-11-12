@@ -4,7 +4,7 @@ import test from 'node:test'; import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { Path } from '../js/path3d.js';
 import { Route } from '../js/route.js';
-import { CH, terrainH, decorType, chunkDecor, chunkHazards, chunkCrossings, ROAD_HALF } from '../js/layout3d.js';
+import { CH, terrainH, decorType, chunkDecor, chunkHazards, chunkCrossings, ROAD_HALF, DECOR_R } from '../js/layout3d.js';
 
 const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const iseo = () => new Route(JSON.parse(readFileSync(new URL('../routes/giro-iseo.json', import.meta.url), 'utf8')));
@@ -33,7 +33,7 @@ test('giro d\'Iseo: percorso chiuso (si richiude), pendenze plausibili, quote de
 test('scenario: deterministico, fuori dalla strada, tipi in base all\'ambiente', () => {
   const p = new Path(null), opts = env => ({ envOf: () => env, path: p, amp: 9, quant: 1.5, lim: 40 });
   const a = chunkDecor(3, opts('country')), b = chunkDecor(3, opts('country')); assert.deepEqual(a, b); assert.ok(a.length > 12 && a.length < 60, 'n. elementi ' + a.length);
-  for (const it of a) assert.ok(Math.abs(it.lat) >= 7 && Math.abs(it.lat) <= 40);
+  for (const it of a) assert.ok(Math.abs(it.lat) >= 6.4 && Math.abs(it.lat) <= 40);
   const m = chunkDecor(5, opts('mountains')).map(i => i.type); assert.ok(m.includes('pine')); assert.ok(!m.includes('house') && !m.includes('bld'));
   const c = chunkDecor(5, opts('city')).map(i => i.type); assert.ok(c.every(t => ['bld', 'lamp', 'banner'].includes(t)));
   assert.equal(decorType('country', 0.1), 'tree'); assert.equal(terrainH(100, 0, 9, 1.5), 0); assert.ok(Math.abs(terrainH(100, 40, 9)) > 0);
@@ -42,4 +42,12 @@ test('ostacoli e incroci: ogni ostacolo cade nel pezzo giusto, ripetuto a ogni g
   const hz = [{ z: 200, lane: 0.2, w: 0.22, type: 'pothole', k: 1 }, { z: 3500, lane: -0.4, w: 0.85, type: 'works', k: 2 }], T = 3600;
   assert.deepEqual(chunkHazards(Math.floor(200 / CH), hz, T).map(h => h.d), [200]); assert.deepEqual(chunkHazards(Math.floor((200 + T) / CH), hz, T).map(h => h.d), [200 + T]);
   assert.equal(chunkHazards(0, hz, T).length, 0); assert.deepEqual(chunkCrossings(3, 720).concat(chunkCrossings(0, 720)), [360]); assert.equal(ROAD_HALF, 3.8);
+});
+
+test('scenario: nessuna casa, edificio o albero tocca la strada (la distanza dipende dalla grandezza), in ogni ambiente e stile', () => {
+  const p = new Path(null); let n = 0;
+  for (const env of ['country', 'hills', 'mountains', 'city']) for (const lim of [28, 40, 60]) for (let c = 0; c < 80; c++) {
+    for (const it of chunkDecor(c, { envOf: () => env, path: p, amp: 9, quant: 1.5, lim })) { n++; assert.ok(Math.abs(it.lat) - (DECOR_R[it.type] || 2) >= ROAD_HALF + 1.3, it.type + ' a ' + it.lat.toFixed(1) + ' m dal centro in ' + env); }
+  }
+  assert.ok(n > 3000, 'controllati ' + n + ' elementi');
 });
