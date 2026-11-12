@@ -111,7 +111,8 @@ function palette() {
 const themeAtZ = z => V.theme === 'auto' ? envAt(z) : V.theme;
 
 /* ---------- mondo: oggetti e vita, generati una volta (deterministici) ---------- */
-const statics = [], movers = [], crossers = [];
+const statics = [], movers = [], crossers = [], junctions = [];
+const JKIND = ['light', 'stop', 'yield', 'light', 'stop'];
 function buildWorld() {
   for (let i = 0; i < 640; i++) {
     const z = hsh(i * 3 + 1) * TRACK, th = envAt(z), r = hsh(i * 7 + 5);
@@ -135,7 +136,14 @@ function buildWorld() {
     const dens = th === 'city' ? 1 : th === 'country' ? 0.45 : 0.3; if (hsh(6100 + i) > dens + 0.25) continue;
     movers.push({ type: 'ped', z0: z, k: 6000 + i, th, vel: (hsh(6200 + i) < 0.5 ? -1 : 1) * (1.1 + hsh(6300 + i) * 0.6), side: hsh(6400 + i) < 0.5 ? -1 : 1, off: 6 + hsh(6500 + i) * 14, sh: shirts[Math.floor(hsh(6600 + i) * shirts.length)], dog: hsh(6700 + i) < 0.3 });
   }
-  for (let j = 0; j < TRACK / XING; j++) for (let n = 0; n < 2; n++) crossers.push({ zc: 360 + XING * j, k: j * 2 + n, hold: 0, vx: (n ? -1 : 1) * (0.35 + hsh(7000 + j + n) * 0.25), ph: hsh(7100 + j * 3 + n) * 6, col: colors[Math.floor(hsh(7200 + j + n * 9) * colors.length)] });
+  for (let j = 0; j < TRACK / XING; j++) {
+    const jn = { j, zc: 360 + XING * j, kind: JKIND[j % JKIND.length], lo: j * 13, prev: 999, armed: false, rel: 999 }; junctions.push(jn);
+    for (let n = 0; n < 4; n++) {                 // due auto per lato: la seconda segue la prima in coda
+      const d = n % 2 ? -1 : 1, sp = 1.1 + hsh(7000 + j * 4 + n) * 0.5;
+      const c = { zc: jn.zc, k: j * 4 + n, jn, d, vx: d * sp, u: -d * (3 + hsh(7100 + j * 7 + n) * 6 + (n >= 2 ? 2.5 : 0)), wait: hsh(7300 + j * 5 + n) * 6, stopped: false, sw: 0, lead: n >= 2 ? crossers[crossers.length - 2] : null, col: colors[Math.floor(hsh(7200 + j + n * 9) * colors.length)] };
+      crossers.push(c); if (c.lead) c.lead.follower = c;
+    }
+  }
 }
 const hazards = [];
 for (let i = 0; i < TRACK / 150; i++) {
@@ -191,6 +199,18 @@ function drawHazard(h, p, x, yb, rw) {
     for (let i = 0; i < 4; i++) { const cx = x - w * .8 + i * w * .53; R(cx - S * .22, yb - .1 * S, S * .44, .1 * S, '#222'); R(cx - S * .16, yb - .5 * S, S * .32, .4 * S, '#ff7a1a'); R(cx - S * .12, yb - .35 * S, S * .24, .1 * S, '#f4f1ff'); R(cx - S * .08, yb - .62 * S, S * .16, .14 * S, '#ff7a1a'); }
     const lamp = Math.floor(V.time * 2) % 2 ? '#ffd24a' : '#7a5a10'; R(x - w - S * .2, yb - 1.2 * S, S * .3, S * .3, lamp);
   }
+}
+/** linea di stop sulla corsia di chi pedala */
+function drawStopLine(p, cx, yb, rw) { const S = 36 * p * ZM; R(cx + rw * 0.05, yb - Math.max(1, S * 0.2), rw * 0.9, Math.max(1, S * 0.2), '#f4f4f4'); }
+/** semaforo, stop o precedenza a bordo strada */
+function drawJunction(jn, p, x, yb) {
+  const S = 36 * p * ZM; R(x, yb - 3.2 * S, Math.max(1, S * 0.1), 3.2 * S, '#555');
+  if (jn.kind === 'light') {
+    const L = lightOf(jn), c = { green: '#35d36b', yellow: '#ffcf33', red: '#ff3b3b' };
+    R(x - 0.35 * S, yb - 4.7 * S, 0.8 * S, 1.6 * S, '#1b1b22');
+    [['red', 4.5], ['yellow', 4.05], ['green', 3.6]].forEach(([k, y]) => R(x - 0.2 * S, yb - y * S, 0.5 * S, 0.35 * S, L.main === k ? c[k] : '#3a3a44'));
+  } else if (jn.kind === 'stop') { R(x - 0.55 * S, yb - 4.2 * S, 1.2 * S, 1.2 * S, '#d6232c'); R(x - 0.4 * S, yb - 3.75 * S, 0.9 * S, 0.28 * S, '#fff'); }
+  else { R(x - 0.65 * S, yb - 4.2 * S, 1.4 * S, 0.35 * S, '#d6232c'); R(x - 0.5 * S, yb - 3.85 * S, 1.1 * S, 0.3 * S, '#d6232c'); R(x - 0.3 * S, yb - 3.55 * S, 0.7 * S, 0.3 * S, '#d6232c'); R(x - 0.12 * S, yb - 3.25 * S, 0.35 * S, 0.25 * S, '#d6232c'); }
 }
 function drawSign(p, x, yb) { const S = 36 * p * ZM; R(x, yb - 2.2 * S, Math.max(1, S * .08), 2.2 * S, '#666'); R(x - .5 * S, yb - 2.8 * S, 1.1 * S, .8 * S, '#ffd24a'); R(x - .3 * S, yb - 2.65 * S, .7 * S, .5 * S, '#222'); }
 function drawCar(p, x, yb, o, front, dir) {
@@ -285,6 +305,12 @@ function collect(cxAt, rh, H) {
     const u = crosserU(x);
     push(dz - 0.5, () => { const yb = H + p * (180 - H), px = cxAt(p) + u * rh(p) * 1.2; if (px > -80 && px < 400) drawCarSide(p, px, yb, '#' + (hex(x.col).map(v => v.toString(16).padStart(2, '0')).join('')), x.vx > 0); });
   }
+  for (const jn of junctions) {                    // semafori, stop e precedenze a bordo strada
+    const dz = (((jn.zc - 8 - V.dist) % TRACK) + TRACK) % TRACK; if (dz < 3 || dz > 200) continue;
+    const th = V.theme === 'auto' ? (ROUTE ? ROUTE.env(V.dist + dz) : envAt(jn.zc)) : V.theme; if (th === 'mountains') continue;
+    const p = pOf(dz); if (p <= 0.01) continue;
+    push(dz, () => { const yb = H + p * (180 - H), rwid = rh(p), cx = cxAt(p); drawStopLine(p, cx, yb, rwid); drawJunction(jn, p, cx + rwid * 1.18, yb); });
+  }
   return list;
 }
 /** logica del mondo: ostacoli, salto, sterzo automatico. dt in secondi reali. */
@@ -304,7 +330,37 @@ export function moverLane(m, rel) {
   return m.lane + (R + (d >= 0 ? gap : -gap) - m.lane) * Math.min(1, k * 2);
 }
 /** posizione laterale (−3…+3) di un'auto che attraversa; in allenamento le auto in attesa restano ferme sul bordo */
-export function crosserU(x) { return ((((V.time - x.hold) * x.vx + x.ph) % 6) + 6) % 6 - 3; }
+/** posizione laterale (unità di 1,2 corsie; ±1 circa = bordo strada) di un'auto che attraversa: ognuna guida da sola */
+export function crosserU(x) { return x.u; }
+/* ---------- incroci: semafori, stop, precedenze. In allenamento il ciclista ha sempre la precedenza (il semaforo gli si fa trovare verde, le auto aspettano); nel gioco valgono le regole ---------- */
+const LINE = -1.55, LIGHT_P = 40;
+/** quando il ciclista è in un tratto di montagna gli incroci non si vedono e non contano */
+function junctionOn(jn) { const th = V.theme === 'auto' ? (ROUTE ? ROUTE.env(V.dist + jn.rel) : envAt(jn.zc)) : V.theme; return th !== 'mountains'; }
+/** stato del semaforo: {main: per chi pedala, cross: per le auto che attraversano}; null se l'incrocio non ha semaforo */
+export function lightOf(jn) {
+  if (jn.kind !== 'light') return null;
+  if (V.auto && jn.rel > -12 && jn.rel < 45) return { main: 'green', cross: 'red' };
+  const t = (((V.time + jn.lo) % LIGHT_P) + LIGHT_P) % LIGHT_P;
+  return { main: t < 22 ? 'green' : t < 25 ? 'yellow' : 'red', cross: t >= 27 && t < 36 ? 'green' : t >= 36 && t < 39 ? 'yellow' : 'red' };
+}
+function crosserBlocked(x) {
+  const jn = x.jn, L = lightOf(jn);
+  if (L) return L.cross !== 'green';
+  return V.auto && jn.rel > -4 && jn.rel < 120 && jn.rel / Math.max(V.speed, 1) < 8;
+}
+function stepCrosser(x, dt) {
+  const d = x.d, jn = x.jn; let p = x.u * d;
+  if (p > 9.5) { p = -9.5; for (const o of [x.lead, x.follower]) if (o && Math.abs(o.u * d - p) < 1.3) p = Math.min(o.u * d, p) - 1.3; x.u = d * p; x.wait = 3 + hsh(x.k * 13 + Math.floor(V.time)) * 7; x.stopped = false; x.sw = 0; }      // è uscita dal lato opposto: dopo una pausa ricompare da lontano
+  if (x.wait > 0) { x.wait -= dt; return; }
+  const hurry = V.auto && Math.abs(p * 1.2) < 1.1 && jn.rel > -6 && jn.rel < 80, np = p + Math.abs(x.vx) * (hurry ? 1.8 : 1) * dt;
+  let lim = Infinity;
+  if (p < LINE + 0.02) {
+    if (!x.stopped && jn.kind !== 'light' && np >= LINE) { x.stopped = true; x.sw = jn.kind === 'stop' ? 2.2 : 0.7; }
+    if (x.sw > 0) { x.sw -= dt; lim = LINE; } else if (crosserBlocked(x)) lim = LINE;
+  }
+  for (const o of [x.lead, x.follower]) if (o) { const q = o.u * d; if (q > p) lim = Math.min(lim, q - 1.2); }      // due auto dello stesso lato non si sovrappongono: chi sta dietro si accoda
+  x.u = d * Math.max(p, Math.min(np, lim));
+}
 /* Partenza libera: dopo ogni partenza o ripartenza (salto di posizione) la strada intorno al ciclista resta senza ostacoli, auto e incroci con auto,
    così non si parte mai dentro un cantiere o davanti a un camion che copre tutto lo schermo. La zona sparisce da sola quando il ciclista l'ha lasciata. */
 const CLEAR_BACK = 20, CLEAR_AHEAD = 50;
@@ -316,6 +372,10 @@ export function zoneTouches(mid, half, at = V.clearAt) { if (at == null) return 
 export function updateWorld(dt) {
   if (V._ld == null || Math.abs(V.dist - V._ld) > 15) clearStart(V.dist);        // primo fotogramma o salto di posizione (partenza, ripartenza dal checkpoint, nuovo percorso)
   V._ld = V.dist; if (V.clearAt != null && V.dist - V.clearAt > CLEAR_AHEAD + 15) V.clearAt = null;
+  for (const jn of junctions) jn.rel = wrapD(jn.zc - V.dist);
+  if (V.auto) for (const jn of junctions) if (jn.kind === 'light') {       // allenamento: il semaforo si fa trovare verde quando arrivi
+    if (jn.rel > 0 && jn.rel < 215 && !jn.armed) { jn.armed = true; jn.lo = 8 - V.time - jn.rel / Math.max(V.speed, 3); } else if (jn.rel < -20 || jn.rel > 300) jn.armed = false;
+  }
   if (V.jumpT >= 0) { V.jumpT += dt; const d = 0.75, k = V.jumpT / d; if (k >= 1) { V.jumpT = -1; V.jump = 0; V.events.push({ type: 'land' }); } else V.jump = 4 * 20 * k * (1 - k); }
   if (V.hitT > 0) V.hitT -= dt;
   if (V.inv > 0) V.inv -= dt;
@@ -341,15 +401,15 @@ export function updateWorld(dt) {
     h.prev = dz;
   }
   if (V.traffic) {
-    for (const x of crossers) {                    // auto agli incroci
-      if (hiddenAt(x.zc)) continue;
-      const rel = wrapD(x.zc - V.dist); if (rel < -3 || rel > 110) continue;
-      const u = crosserU(x);
-      if (V.auto) {
-        const onRoad = Math.abs(u * 1.2) < 1.1;
-        if (!onRoad && u * x.vx < 0) x.hold += dt;                    // sta per entrare: aspetta sul bordo finché il ciclista non è passato
-        else if (onRoad && rel < 70) x.hold -= dt * 1.4;              // già in mezzo alla strada: si sbriga a liberarla
-      } else if (V.running && Math.abs(rel) < 1.6 && Math.abs(u * 1.2 - R) < 0.33) hit('car');
+    for (const x of crossers) {                    // auto agli incroci: ognuna guida da sola (si ferma alla linea, aspetta, riparte)
+      stepCrosser(x, dt);
+      if (!V.auto && V.running && !hiddenAt(x.zc) && Math.abs(wrapD(x.zc - V.dist)) < 1.6 && Math.abs(x.u * 1.2 - R) < 0.33) hit('car');
+    }
+    for (const jn of junctions) {                  // gioco: semaforo rosso o stop ignorati = investito
+      if (!V.auto && V.running && jn.prev > 6 && jn.rel <= 6 && jn.rel > -20 && !hiddenAt(jn.zc) && junctionOn(jn)) {
+        if (jn.kind === 'light' && lightOf(jn).main === 'red') hit('semaforo'); else if (jn.kind === 'stop' && V.speed > 2.2) hit('stop');
+      }
+      jn.prev = jn.rel;
     }
     if (!V.auto && V.running) for (const m of movers) {            // gioco: auto, ciclisti e trattori sulla strada
       const hw = HALF_W[m.type]; if (!hw || hiddenAt(m.z0 + m.vel * V.time)) continue;
@@ -647,7 +707,7 @@ export function drawSide() {
 export { gradeOf };
 
 /* ---------- esportazioni per il renderer 3D ---------- */
-export { hazards, movers, crossers, TRACK, XING, envAt, CLEAR_BACK, CLEAR_AHEAD };
+export { hazards, movers, crossers, junctions, TRACK, XING, envAt, CLEAR_BACK, CLEAR_AHEAD };
 /** il pezzo di rete del traffico che non disegna: clacson e sorpassi (stessa logica del motore 2D) */
 export function trafficTick() {
   if (!V.traffic) return;

@@ -88,7 +88,23 @@ void main(){
     this.clearWorld(); this.clearActors(); this.camInit = false; this.resize();
   }
   /* ---------- mondo a pezzi ---------- */
-  clearWorld() { for (const g of this.chunks.values()) this._dispose(g); this.chunks.clear(); }
+  clearWorld() { for (const g of this.chunks.values()) this._dispose(g); this.chunks.clear(); if (this.lamps) { for (const l of this.lamps.values()) this.actors.remove(l.g); this.lamps.clear(); } }
+  /** le tre luci dei semafori: una scatola per colore, accesa o spenta secondo lo stato dell'incrocio */
+  _updateLights() {
+    const X = G.XING, dist = V.dist, n = G.junctions.length; this.lamps = this.lamps || new Map();
+    const k0 = Math.ceil((dist - 40 - 360) / X), k1 = Math.floor((dist + 200 - 360) / X), live = new Set();
+    for (let k = k0; k <= k1; k++) {
+      const jn = G.junctions[((k % n) + n) % n], dc = 360 + k * X; if (jn.kind !== 'light' || this.envOf(dc) === 'mountains') continue;
+      live.add(k); let l = this.lamps.get(k);
+      if (!l) {
+        const q = this.path.frame(dc - 9.3, ROAD_HALF + 1.4), g = new THREE.Group(), mats = [];
+        for (let i = 0; i < 3; i++) { const m = new THREE.MeshBasicMaterial({ color: 0x3a3a44 }), b = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.1), m); b.position.set(q.x, q.y + 4.95 - i * 0.5, q.z); b.rotation.y = q.yaw; g.add(b); mats.push(m); }
+        this.actors.add(g); l = { g, mats }; this.lamps.set(k, l);
+      }
+      const L = G.lightOf(jn); ['red', 'yellow', 'green'].forEach((c, i) => l.mats[i].color.setHex(L.main === c ? { red: 0xff3b3b, yellow: 0xffcf33, green: 0x35d36b }[c] : 0x3a3a44));
+    }
+    for (const [k, l] of this.lamps) if (!live.has(k)) { this.actors.remove(l.g); l.g.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); this.lamps.delete(k); }
+  }
   _dispose(g) { this.world.remove(g); g.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
   _killBubble(b) { if (!b) return; if (b.parent) b.parent.remove(b); if (b.material) { if (b.material.map) b.material.map.dispose(); b.material.dispose(); } }
   clearActors() { for (const o of this.movObj.values()) this.actors.remove(o.g); this.movObj.clear(); for (const o of this.cross.values()) this.actors.remove(o); this.cross.clear(); if (this.rider) { this.actors.remove(this.rider.g); this.rider = null; } for (const b of this.birds) this.actors.remove(b.g); this.birds = []; this.sig = ''; if (this.fp) { this.persp.remove(this.fp); this.fp = null; } }
@@ -114,7 +130,14 @@ void main(){
     const D = new M.Merger();
     for (const dc of chunkCrossings(c, G.XING)) {
       if (this.envOf(dc) === 'mountains') continue; const f = P.frame(dc, 0);
-      D.box(70, 0.06, 8, 0x555566, f.x, f.y + 0.045, f.z, f.yaw + Math.PI / 2);
+      D.box(90, 0.06, 8, 0x555566, f.x, f.y + 0.045, f.z, f.yaw + Math.PI / 2);
+      for (let c = -45; c < 45; c += 6) { const lat = c + 3; if (Math.abs(lat) < 6) continue; const th = terrainH(dc, lat, st.amp, st.quant), qq = P.frame(dc, lat); if (th > 0.02) D.box(6.2, 0.08, 8, 0x555566, qq.x, qq.y + th + 0.05, qq.z, qq.yaw + Math.PI / 2); }      // dove il terreno è più alto la strada laterale sale con lui
+      const jn = G.junctions[(((Math.round((dc - 360) / G.XING)) % G.junctions.length) + G.junctions.length) % G.junctions.length], sl = P.frame(dc - 8, 2.0), q = P.frame(dc - 9, ROAD_HALF + 1.4);
+      D.box(3.4, 0.05, 0.5, 0xf4f4f4, sl.x, sl.y + 0.1, sl.z, sl.yaw);          // linea di stop sulla corsia di chi pedala
+      D.box(0.12, 4.0, 0.12, 0x555555, q.x, q.y + 2.0, q.z);                     // palo
+      if (jn.kind === 'light') D.box(0.7, 1.7, 0.5, 0x1b1b22, q.x, q.y + 4.4, q.z, q.yaw);
+      else if (jn.kind === 'stop') { D.box(1.3, 1.3, 0.08, 0xd6232c, q.x, q.y + 4.3, q.z, q.yaw); D.box(1.0, 0.26, 0.1, 0xffffff, q.x, q.y + 4.3, q.z, q.yaw); }
+      else { D.box(1.5, 0.45, 0.08, 0xd6232c, q.x, q.y + 4.6, q.z, q.yaw); D.box(1.0, 0.4, 0.08, 0xd6232c, q.x, q.y + 4.2, q.z, q.yaw); D.box(0.5, 0.35, 0.08, 0xd6232c, q.x, q.y + 3.85, q.z, q.yaw); }
       for (const off of [-6.2, 6.2]) for (let i = -3; i <= 3; i++) { const q = P.frame(dc + off, i * 1.0); D.box(0.55, 0.05, 1.4, 0xf4f4f4, q.x, q.y + 0.1, q.z, q.yaw); }
     }
     // ostacoli
@@ -173,9 +196,9 @@ void main(){
     // auto che attraversano
     for (const x of G.crossers) {
       let o = this.cross.get(x); const T2 = G.TRACK, rel = (((x.zc - dist + T2 / 2) % T2) + T2) % T2 - T2 / 2;
-      if (!V.traffic || rel < 8 || rel > 160 || G.hiddenAt(x.zc) || this.envOf(dist + rel) === 'mountains') { if (o) o.visible = false; continue; }
+      if (!V.traffic || rel < -12 || rel > 200 || G.hiddenAt(x.zc) || this.envOf(dist + rel) === 'mountains') { if (o) o.visible = false; continue; }
       if (!o) { const cs = typeof x.col === 'string' ? x.col : '#' + (x.col >>> 0).toString(16).padStart(6, '0'); o = st.sprite ? M.sprite(this.sprites.car(cs, false), 4.4, 2.6) : M.carMesh(new THREE.Color(cs), false); this.actors.add(o); this.cross.set(x, o); }
-      o.visible = true; const u = G.crosserU(x), f = this.path.frame(dist + rel, u * ROAD_HALF * 1.2); o.position.set(f.x, f.y + 0.05, f.z); if (!st.sprite) o.rotation.y = f.yaw + (x.vx > 0 ? -Math.PI / 2 : Math.PI / 2);
+      o.visible = true; const u = G.crosserU(x), lat = u * ROAD_HALF * 1.2, f = this.path.frame(dist + rel, lat); o.position.set(f.x, f.y + 0.05 + (Math.abs(lat) > 6 ? Math.max(0, terrainH(dist + rel, lat, st.amp, st.quant)) : 0), f.z); if (!st.sprite) o.rotation.y = f.yaw + (x.vx > 0 ? -Math.PI / 2 : Math.PI / 2);
     }
   }
   _updateBirds(dt, p) {
@@ -250,7 +273,7 @@ void main(){
     this._ensureChunks();
     if (!this.rider || this.sig !== this._riderSig() && (this.tick % 10 === 0)) this._buildRider();
     const st = this.style, P = this.path, dist = V.dist, f = P.frame(dist, 0), lat = V.lat * 0.7 * ROAD_HALF;
-    this._updateMovers(); this._animateRider(dt, f); this._bubble(f); this._updateBirds(dt, f);
+    this._updateMovers(); this._updateLights(); this._animateRider(dt, f); this._bubble(f); this._updateBirds(dt, f);
     // camera
     const fx = Math.sin(f.yaw), fz = Math.cos(f.yaw); let cam = this.persp; const shake = V.shake > 0 ? V.shake * 0.5 : 0;
     const rp = P.frame(dist, lat);

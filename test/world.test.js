@@ -38,17 +38,79 @@ test('allenamento: auto, ciclisti, trattori e auto agli incroci non toccano mai 
 test('allenamento: il ciclista sta a destra (corsia positiva) quando la strada è libera', () => {
   driveTraffic(20, 8, true); assert.ok(G.V.lat > 0.3 && G.V.lat < 0.7, 'lat ' + G.V.lat);
 });
+
+/* ---- incroci: semafori, stop, precedenze, auto che aspettano in coda ---- */
+const J = k => G.junctions.find(j => j.kind === k), carsOf = jn => G.crossers.filter(c => c.jn === jn);
+const saveCars = () => G.crossers.map(c => ({ c, u: c.u, wait: c.wait, stopped: c.stopped, sw: c.sw }));
+const restoreCars = saved => { for (const q of saved) Object.assign(q.c, { u: q.u, wait: q.wait, stopped: q.stopped, sw: q.sw }); };
 test('allenamento: l\'auto che deve attraversare lascia passare il ciclista (senza la regola ci sarebbe stato lo scontro)', () => {
-  const x = G.crossers[0], speed = 8, ph0 = x.ph;
-  const run = rule => {
-    const V = G.V; Object.assign(V, { dist: x.zc - 90, lat: 0.5, latT: 0.5, jump: 0, jumpT: -1, inv: 0, running: true, auto: true, traffic: true, hazards: false, time: 0, speed, events: [] });
-    for (const c of G.crossers) c.hold = 0; x.ph = (((3 - (90 / speed) * x.vx) % 6) + 6) % 6;        // senza regola, l'auto sarebbe a metà strada proprio quando arriva il ciclista
+  const jn = J('yield'), x = carsOf(jn).find(c => c.d === 1 && !c.lead), speed = 8, saved = saveCars();
+  const run = auto => {
+    for (const c of G.crossers) Object.assign(c, { wait: 999, stopped: true, sw: 0 });
+    Object.assign(x, { wait: 0, vx: 1.3, u: 0.25 - 1.3 * 3.75 });                  // senza regola arriverebbe in mezzo alla strada proprio quando passa il ciclista
+    const V = G.V; Object.assign(V, { dist: jn.zc - 30, lat: 0.5, latT: 0.5, jump: 0, jumpT: -1, inv: 0, running: true, auto, traffic: true, hazards: false, time: 0, speed, events: [] }); V._ld = null;
     let overlaps = 0; const dt = 1 / 60;
-    for (let t = 0; t < 16; t += dt) { V.time += dt; V.dist += speed * dt; G.updateWorld(dt); if (!rule) for (const c of G.crossers) c.hold = 0; if (Math.abs(x.zc - V.dist) < 1.6 && Math.abs(G.crosserU(x) * 1.2 - V.lat * 0.7) < 0.33) overlaps++; }
+    for (let t = 0; t < 8; t += dt) { V.time += dt; V.dist += speed * dt; G.updateWorld(dt); G.drainEvents(); if (Math.abs(jn.zc - V.dist) < 1.6 && Math.abs(x.u * 1.2 - V.lat * 0.7) < 0.33) overlaps++; }
     return overlaps;
   };
-  const senza = run(false), con = run(true); x.ph = ph0;
-  assert.ok(senza > 0, 'controllo: senza la regola l\'auto è sulla traiettoria'); assert.equal(con, 0, 'con la regola l\'auto aspetta o libera la strada');
+  const senza = run(false), con = run(true); restoreCars(saved);
+  assert.ok(senza > 0, 'controllo: senza la regola l\'auto è sulla traiettoria'); assert.equal(con, 0, 'con la regola l\'auto aspetta alla linea e il ciclista passa');
+});
+test('allenamento: il semaforo si fa trovare verde e nessuna auto laterale è in mezzo alla strada quando passi', () => {
+  const jn = J('light'), saved = saveCars(), V = G.V, speed = 8;
+  for (const c of carsOf(jn)) Object.assign(c, { wait: 0, stopped: false, sw: 0 });
+  Object.assign(V, { dist: jn.zc - 215, lat: 0.5, latT: 0.5, jump: 0, jumpT: -1, inv: 0, running: true, auto: true, traffic: true, hazards: false, time: 0, speed, events: [] }); V._ld = null;
+  let redAtArrival = 0, onRoadWhileRider = 0; const dt = 1 / 60;
+  while (jn.zc - V.dist > -3) {
+    V.time += dt; V.dist += speed * dt; G.updateWorld(dt); G.drainEvents(); const rel = jn.zc - V.dist;
+    if (rel < 40 && rel > -3) { if (G.lightOf(jn).main !== 'green') redAtArrival++; if (carsOf(jn).some(c => Math.abs(c.u * 1.2) < 1.1)) onRoadWhileRider++; }
+  }
+  restoreCars(saved);
+  assert.equal(redAtArrival, 0, 'verde per tutto l\'arrivo'); assert.equal(onRoadWhileRider, 0, 'nessuna auto in mezzo alla strada mentre passi');
+});
+test('semaforo rosso per le auto laterali: si accodano ferme alla linea, al verde ripartono', () => {
+  const jn = J('light'), saved = saveCars(), V = G.V, LINE = -1.55, dt = 1 / 30;
+  for (const c of G.crossers) Object.assign(c, { wait: 999 });
+  for (const c of carsOf(jn)) Object.assign(c, { wait: 0, stopped: false, sw: 0, u: -c.d * (c.lead ? 8 : 5.5) });
+  Object.assign(V, { dist: jn.zc - 400, lat: 0.5, latT: 0.5, jump: 0, jumpT: -1, inv: 0, running: false, auto: false, traffic: true, hazards: false, time: 0, speed: 0, events: [] }); V._ld = null;
+  jn.lo = 3;                                             // tra 3 e 22 s la strada principale ha verde e le auto laterali rosso
+  for (let t = 0; t < 12; t += dt) { V.time += dt; G.updateWorld(dt); }
+  const lead = carsOf(jn).filter(c => !c.lead), fol = carsOf(jn).filter(c => c.lead);
+  for (const c of lead) assert.ok(Math.abs(c.u * c.d - LINE) < 0.02, 'prima auto ferma alla linea: ' + c.u * c.d);
+  for (const c of fol) assert.ok(Math.abs(c.u * c.d - (LINE - 1.2)) < 0.05, 'seconda auto in coda dietro la prima: ' + c.u * c.d);
+  jn.lo = 27 - V.time;                                   // ora il verde è delle auto laterali
+  for (let t = 0; t < 3; t += dt) { V.time += dt; G.updateWorld(dt); }
+  for (const c of lead) assert.ok(c.u * c.d > LINE + 1, 'la prima auto è ripartita: ' + c.u * c.d);
+  restoreCars(saved);
+});
+test('gioco: semaforo rosso ignorato = investito; verde no', () => {
+  const jn = J('light'), saved = saveCars();
+  for (const [lo, atteso] of [[22, true], [2, false]]) {           // rosso / verde all'arrivo (≈ 8 s dopo la partenza)
+    for (const c of G.crossers) Object.assign(c, { wait: 999 });
+    startAt(jn.zc - 70, { lat: 0 }); jn.lo = lo; jn.prev = 999;
+    const n = runFrames(10).filter(e => e.type === 'hit' && e.what === 'semaforo').length;
+    assert.equal(n > 0, atteso, (atteso ? 'rosso: penalità' : 'verde: nessuna penalità') + ' (' + n + ')');
+  }
+  restoreCars(saved);
+});
+test('gioco: lo stop va rispettato: a velocità si viene investiti, rallentando a meno di 2 m/s no', () => {
+  const jn = J('stop'), saved = saveCars();
+  for (const [sp, atteso] of [[8, true], [1.5, false]]) {
+    for (const c of G.crossers) Object.assign(c, { wait: 999 });
+    startAt(jn.zc - 70, { lat: 0 }); G.V.speed = sp; jn.prev = 999;
+    const n = runFrames(70 / sp + 4, sp).filter(e => e.type === 'hit' && e.what === 'stop').length;
+    assert.equal(n > 0, atteso, 'a ' + sp + ' m/s (' + n + ')');
+  }
+  restoreCars(saved);
+});
+test('incroci: due auto della stessa strada non si sovrappongono mai e nessuna sparisce a metà strada', () => {
+  const V = G.V; Object.assign(V, { dist: 0, lat: 0.5, latT: 0.5, jump: 0, jumpT: -1, inv: 0, running: true, auto: false, traffic: true, hazards: false, time: 0, speed: 0, events: [] }); V._ld = null;
+  let minGap = 99, vanish = 0; const prev = new Map(); const dt = 1 / 30;
+  for (let t = 0; t < 300; t += dt) {
+    V.time += dt; G.updateWorld(dt); G.drainEvents();
+    for (const c of G.crossers) { const p = c.u * c.d; if (c.lead) minGap = Math.min(minGap, Math.abs(c.lead.u * c.d - p)); const q = prev.get(c); if (q != null && Math.abs(p - q) > 1 && !(q > 9 && p < -9)) vanish++; prev.set(c, p); }
+  }
+  assert.ok(minGap > 1.15, 'distanza minima rispettata (' + minGap + ')'); assert.equal(vanish, 0, 'nessun salto di posizione');
 });
 test('gioco: andando sulla corsia opposta o contro i mezzi si viene colpiti (e c\'è un periodo senza colpi dopo ogni urto)', () => {
   const r = driveTraffic(600, 9, false, -1);
@@ -94,15 +156,17 @@ test('partenza libera, allenamento: partendo davanti a una buca la bici non salt
   assert.ok(prima >= 1, 'controllo: senza zona libera salta'); assert.equal(dopo, 0);
 });
 test('partenza libera, gioco: partendo in mezzo a un incrocio o addosso a un\'auto non si viene investiti', () => {
-  for (const x of G.crossers) {
-    const ph0 = x.ph;
+  const saved = saveCars();
+  for (const jn of G.junctions) {
+    const x = carsOf(jn).find(c => c.d === 1 && !c.lead);
     for (const zone of [false, true]) {
-      startAt(x.zc - 5, { lat: 0, zone }); x.ph = (((3 - (5 / 8) * x.vx) % 6) + 6) % 6;
+      for (const c of G.crossers) Object.assign(c, { wait: 999, stopped: true, sw: 0 });
+      startAt(jn.zc - 5, { lat: 0, zone }); Object.assign(x, { wait: 0, vx: 1.3, u: -1.3 * 0.625 }); jn.prev = 0;      // l'auto arriva in mezzo alla strada proprio mentre si passa
       const n = runFrames(1.5).filter(e => e.type === 'hit').length;
-      if (!zone) assert.ok(n >= 1, 'controllo: senza zona libera l\'auto a ' + x.zc + ' investe'); else assert.equal(n, 0, 'con la zona libera nessuno scontro a ' + x.zc);
+      if (!zone) assert.ok(n >= 1, 'controllo: senza zona libera l\'auto a ' + jn.zc + ' investe'); else assert.equal(n, 0, 'con la zona libera nessuno scontro a ' + jn.zc);
     }
-    x.ph = ph0;
   }
+  restoreCars(saved);
   for (const m of G.movers) {
     if (m.type === 'ped') continue;
     for (const zone of [false, true]) {
