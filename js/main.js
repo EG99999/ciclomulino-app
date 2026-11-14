@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Gatti Elia
-import { parsePlan, pickSession, localISODate, DEFAULT_FTP, LIMITS, validSession } from './plan.js';
+import { parsePlan, pickSession, localISODate, DEFAULT_FTP, LIMITS, validSession, workoutStats } from './plan.js';
 import { Session } from './session.js';
 import { ERG_CFG } from './erg.js';
 import { speedFor } from './physics.js';
@@ -830,7 +830,7 @@ async function runStateSync(manual, pulled = { plan: false, workouts: 0 }) {
   try {
     const sy = new StateSync({
       cloud: A.cloud, storage: shim, getSettings: () => S, busy: busyRide, getRoutes: () => A.imported,
-      applyRemote: next => { Object.assign(S, next); syncSig = JSON.stringify(settingsPayload(S)); saveSettings(shim, S); applySettings(); if (A.screen === 'settings') scr.show('settings'); },
+      applyRemote: next => { const done = { setupDone: S.setupDone || next.setupDone, tutorialDone: S.tutorialDone || next.tutorialDone }; Object.assign(S, next, done); syncSig = JSON.stringify(settingsPayload(S)); saveSettings(shim, S); applySettings(); if (A.screen === 'settings') scr.show('settings'); },
       addRoutes: list => { A.imported = [...A.imported, ...list].slice(-6); store.set('ciclomulino.gpx', JSON.stringify(A.imported)); loadRoutes(); },
       validateRoute: j => { new Route(j); }
     });
@@ -1005,7 +1005,10 @@ const api = {
   routes: () => A.routes, currentRoute: () => (A.route ? A.route.id : 'auto'), applyRoute: id => applyRoute(id, true),
   places: () => { if (!A.route) return []; const seen = new Set(); return A.route.places.filter(p => !seen.has(p.n) && seen.add(p.n)); },
   setStart: d => { A.startDist = d; G.V.dist = d; },
-  sessions: () => (A.plan ? A.plan.sessions.map(s => ({ id: s.id, title: s.title, notes: s.notes, steps: s.steps.length, total: s.total, date: s.date, time: s.time, mine: A.mine.some(w => w.id === s.id) })) : []),
+  sessions: () => (A.plan ? A.plan.sessions.map(s => ({ id: s.id, title: s.title, notes: s.notes, steps: s.steps.length, total: s.total, date: s.date, time: s.time, mine: A.mine.some(w => w.id === s.id), stats: workoutStats(s, refFtp()) })) : []),
+  /** le prove FTP: allenamenti sempre presenti nell'elenco */
+  testList: () => ['ramp', 'ftp20'].map(kind => { const f = refFtp(), r = parsePlan({ ftp: f, sessions: [kind === 'ramp' ? rampPlan(f) : ftp20Plan(f)] }); return { kind, title: kind === 'ramp' ? 'Test FTP · Rampa' : 'Test FTP · 20 minuti', stats: r.sessions[0] ? workoutStats(r.sessions[0], f) : null }; }),
+  planSource: () => (S.cloud ? 'onedrive' : S.folder ? 'cartella' : 'file'),
   defaultSessionIndex: () => (A.plan ? Math.max(0, pickSession(A.plan.sessions, localISODate())) : 0),
   chooseSession: id => { const i = A.plan ? A.plan.sessions.findIndex(s => s.id === id) : -1; if (i >= 0 && i !== A.sessIdx) selectSession(i, true); },
   loadPlanFile: async f => { loadPlanText(await f.text()); },
@@ -1031,5 +1034,6 @@ applySettings();
 try { ui(); } catch (e) { onErr('schermata: ' + e.message); }
 requestAnimationFrame(frame);
 Au.setOn(S.sound); Au.setVolume(S.vol); $('vol').value = S.vol; $('btnSound').textContent = S.sound ? '🔊 SUONI: ON' : '🔇 SUONI: OFF';
+try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch { /* chiede al browser di non cancellare i dati del sito: se non può, pazienza */ }
 cloudStart().catch(e => onErr('OneDrive: ' + e.message)).then(async () => { await folderStart(); if (!S.setupDone && $('recover').hidden) openWizard(); });
 let devSig = ''; setInterval(() => { if (scr && scr.cur === 'connect') { const sg = JSON.stringify(api.devices()); if (sg !== devSig) { devSig = sg; scr.refreshConnect(); } } else devSig = ''; }, 800);

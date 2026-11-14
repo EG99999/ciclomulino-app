@@ -65,7 +65,7 @@ export function runWizard(ctx) {
     const end = (tut) => { S.setupDone = true; S.wizStep = 0; save(); root.hidden = true; root.innerHTML = ''; actions.onClose && actions.onClose(); if (tut) actions.startTutorial(); };
     $('wzSkip').onclick = () => { st.next && st.next(); end(false); };
     if ($('wzBack')) $('wzBack').onclick = () => { st.next && st.next(); i--; S.wizStep = i; save(); draw(); };
-    if ($('wzNext')) $('wzNext').onclick = () => { st.next && st.next(); i++; S.wizStep = i; save(); draw(); };
+    if ($('wzNext')) $('wzNext').onclick = () => { st.next && st.next(); i++; S.wizStep = i; S.setupDone = true; save(); draw(); };      // le informazioni di base, una volta date, non si richiedono più anche se chiudi a metà
     if ($('wzTut')) $('wzTut').onclick = () => end(true);
     if ($('wzEnd')) $('wzEnd').onclick = () => end(false);
   }

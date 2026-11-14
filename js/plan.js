@@ -162,3 +162,23 @@ export function localISODate(d = new Date()) {
   const p = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
+
+/** fine di ogni zona di potenza in % FTP (zone 1-7): le stesse del cruscotto */
+export const ZONE_TOPS = [55, 76, 91, 106, 121, 151, 999];
+export const zoneOfPct = pct => { const i = ZONE_TOPS.findIndex(t => pct < t); return i < 0 ? ZONE_TOPS.length - 1 : i; };
+/** durata, potenza media, potenza massima, secondi in ogni zona e profilo (n colonne: potenza media e zona) di un allenamento già elaborato */
+export function workoutStats(sess, ftp, n = 72) {
+  let total = 0, wsum = 0, maxW = 0; const zones = Array(ZONE_TOPS.length).fill(0), segs = [];
+  for (const st of (sess && sess.steps) || []) {
+    const d = isNum(st.dEst) ? st.dEst : (isNum(st.d) ? st.d : 0); if (!(d > 0)) continue;
+    const z = zoneOfPct(st.mid / ftp * 100); total += d; wsum += st.mid * d; maxW = Math.max(maxW, st.hi); zones[z] += d; segs.push({ d, w: st.mid, z });
+  }
+  const bars = []; let k = 0, acc = 0;
+  for (let i = 0; i < n && total > 0; i++) {
+    const t0 = total * i / n, t1 = total * (i + 1) / n; let w = 0, c = 0, zz = 0, zbest = 0;
+    while (k < segs.length && acc + segs[k].d <= t0) { acc += segs[k].d; k++; }
+    for (let j = k, a = acc; j < segs.length && a < t1; a += segs[j].d, j++) { const o = Math.min(a + segs[j].d, t1) - Math.max(a, t0); if (o > 0) { w += segs[j].w * o; c += o; if (o > zbest) { zbest = o; zz = segs[j].z; } } }
+    bars.push({ w: c ? w / c : 0, z: zz });
+  }
+  return { total, avgW: total ? wsum / total : 0, avgPct: total && ftp ? wsum / total / ftp * 100 : 0, maxW, zones, bars };
+}

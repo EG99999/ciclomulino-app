@@ -11,13 +11,13 @@ const fmt = s => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600
 const getPath = (o, p) => p.split('.').reduce((a, k) => a && a[k], o);
 const setPath = (o, p, v) => { const ks = p.split('.'); const last = ks.pop(); const t = ks.reduce((a, k) => a[k], o); t[last] = v; };
 export const KINDS = [
-  ['plan', '📅', 'ALLENAMENTO DEL PIANO', 'Una seduta del tuo piano (o un tuo workout), con ERG.'],
-  ['create', '🛠', 'CREA UN EVENTO', 'Costruisci un workout: step, ripetizioni, watt o % FTP.'],
+  ['plan', '📅', 'ALLENAMENTI', 'Il tuo piano, le prove FTP e i tuoi allenamenti, con ERG.'],
+  ['create', '🛠', 'CREA UN ALLENAMENTO', 'Costruisci un allenamento: step, ripetizioni, watt o % FTP.'],
   ['free', '🚴', 'PEDALATA LIBERA', 'Pedali e basta: il trainer segue la pendenza del percorso.'],
-  ['ramp', '📈', 'TEST FTP · RAMP', 'La rampa: sali di un gradino al minuto fino al limite.'],
-  ['ftp20', '⏱', 'TEST FTP · 20 MINUTI', 'Riscaldamento e 20 minuti a tutta, con watt regolabili.'],
   ['keys', '⌨', 'GIOCO CON LA TASTIERA', 'Niente trainer: guidi tu con le frecce.']
 ];
+const ZCOL = ['#8a8aa0', '#4bc4ff', '#4be37a', '#ffd24a', '#ff9a3a', '#ff4d6d', '#c06aff'];      // colori delle zone di potenza 1-7
+const GROUP = { ramp: 'plan', ftp20: 'plan' };                                                       // le prove FTP stanno nella pagina Allenamenti
 
 export function createScreens(api) {
   const root = $('scr'); let onResize = null; let cur = 'home', tab = 'profilo', selKind = null, edit = null;
@@ -45,8 +45,8 @@ export function createScreens(api) {
   /* ---------------- SCELTA ---------------- */
   function select() {
     const P = api.S.lastPick; selKind = selKind || P.kind || 'plan';
-    root.innerHTML = `<div class="panel wide"><h1>COSA PEDALIAMO?</h1><div class="split">
-      <div class="kinds">${KINDS.map(k => `<button class="mc kind ${k[0] === selKind ? 'sel' : ''}" data-k="${k[0]}"><span>${k[1]}</span><b>${k[2]}</b><i>${k[3]}</i></button>`).join('')}</div>
+    root.innerHTML = `<div class="panel wide"><h1>COSA VUOI FARE OGGI?</h1><div class="split">
+      <div class="kinds">${KINDS.map(k => `<button class="mc kind ${k[0] === (GROUP[selKind] || selKind) ? 'sel' : ''}" data-k="${k[0]}"><span>${k[1]}</span><b>${k[2]}</b><i>${k[3]}</i></button>`).join('')}</div>
       <div class="detail" id="selDetail"></div></div>
       <div class="nav">${back('home')}<span></span><button class="mc go" id="selNext">AVANTI → COLLEGA</button></div></div>`;
     root.querySelectorAll('.kind').forEach(b => b.onclick = () => { selKind = b.dataset.k; select(); });
@@ -63,24 +63,50 @@ export function createScreens(api) {
     rs.onchange = async () => { P.start = 0; await api.applyRoute(rs.value); P.route = rs.value; api.saveS(); detail(); };
     const ss = $('stSel'); if (ss) ss.onchange = () => { P.start = +ss.value; api.setStart(+ss.value); api.saveS(); };
   }
+  /** scheda di un allenamento: titolo, data, grafico a colori per zona, durata, potenza media, zone */
+  function workoutCard(w, selected, ftp, extra = '') {
+    const st = w.stats, today = new Date().toISOString().slice(0, 10);
+    const when = w.date ? (w.date === today ? 'OGGI' : w.date.slice(8) + '/' + w.date.slice(5, 7)) + (w.time ? ' ' + w.time : '') : '';
+    let chart = '';
+    if (st && st.bars.length) { const top = Math.max(st.maxW * 1.05, ftp * 1.25, 1); chart = '<svg class="wprof" viewBox="0 0 144 36" preserveAspectRatio="none" aria-hidden="true">' + st.bars.map((b, i) => '<rect x="' + (i * 2) + '" y="' + (36 - Math.max(1.5, b.w / top * 35)).toFixed(1) + '" width="1.7" height="' + Math.max(1.5, b.w / top * 35).toFixed(1) + '" fill="' + ZCOL[b.z] + '"/>').join('') + '</svg>'; }
+    const zones = st ? st.zones.map((z, i) => [i, z]).filter(([, z]) => z >= 60 && z >= st.total * 0.04).map(([i, z]) => '<i style="--zc:' + ZCOL[i] + '">Z' + (i + 1) + ' ' + fmt(z) + '</i>').join('') : '';
+    const line = st && st.total ? '⏱ ' + fmt(st.total) + ' · ⌀ ' + Math.round(st.avgW) + ' W (' + Math.round(st.avgPct) + '% FTP) · max ' + Math.round(st.maxW) + ' W' : '';
+    return '<button class="wcard ' + (selected ? 'sel' : '') + '" data-w="' + esc(w.id || w.kind) + '"><div class="wh"><b>' + esc(w.title) + (w.mine ? ' ✎' : '') + '</b><span>' + esc(when) + '</span></div>' + chart + '<div class="ws">' + esc(line) + extra + '</div><div class="wz">' + zones + '</div></button>';
+  }
+  function planDetail(box, P, ftp, next, nx) {
+    const list = api.sessions(), tests = api.testList(), src = api.planSource();
+    if (selKind === 'plan' && !(P.sessId && list.some(x => x.id === P.sessId)) && list.length) P.sessId = list[api.defaultSessionIndex()].id;
+    const isTest = selKind === 'ramp' || selKind === 'ftp20', cur = isTest ? selKind : P.sessId;
+    const hint = src === 'onedrive' ? '✓ Gli allenamenti si aggiornano da soli da OneDrive.' : src === 'cartella' ? '✓ Gli allenamenti si aggiornano da soli dalla cartella dati.' : 'Per averli in automatico collega OneDrive (Impostazioni). Altrimenti carica il file a mano.';
+    box.innerHTML = '<h2>Allenamenti</h2><div class="wlist">' + (list.length ? [...list].sort((x, y) => (x.date || '9999').localeCompare(y.date || '9999') || (x.time || '').localeCompare(y.time || '')).map(w => workoutCard(w, !isTest && w.id === cur, ftp)).join('') : '<p class="hint">Nessun allenamento del piano per ora.</p>') + '</div>'
+      + '<h2>Prove FTP</h2><div class="wlist">' + tests.map(t => workoutCard({ id: t.kind, title: t.title, stats: t.stats }, isTest && t.kind === cur, ftp, ' · fino al limite')).join('') + '</div>'
+      + '<div class="note" id="plNote"></div>' + routeBlock(P)
+      + '<div class="rowb"><span class="hint">' + hint + '</span><label class="mc small" for="plFile">📂 CARICA piano-app.json</label><input type="file" id="plFile" accept=".json" hidden>' + (src === 'file' ? '<button class="mc small" data-go="settings">IMPOSTAZIONI</button>' : '') + '</div>';
+    const showNote = () => {
+      const w = list.find(x => x.id === P.sessId);
+      $('plNote').textContent = isTest ? api.testInfo(selKind).text + ' FTP di riferimento: ' + ftp + ' W (' + api.ftpSource() + ').' : w ? (w.notes || 'Nessuna nota.') + ' · ' + w.steps + ' step' : '';
+    };
+    box.querySelectorAll('.wcard').forEach(b => b.onclick = () => {
+      const id = b.dataset.w;
+      if (id === 'ramp' || id === 'ftp20') { selKind = id; P.kind = id; }
+      else { selKind = 'plan'; P.kind = 'plan'; P.sessId = id; api.chooseSession(id); }
+      api.saveS(); detail();
+    });
+    const f = $('plFile'); if (f) f.onchange = async e => { if (e.target.files[0]) { await api.loadPlanFile(e.target.files[0]); select(); } };
+    if (!isTest && P.sessId) api.chooseSession(P.sessId);
+    showNote(); bindRoute(P); wire(); nx('AVANTI → COLLEGA', () => show('connect'), isTest || !!list.length);
+  }
   function detail() {
     const P = api.S.lastPick, box = $('selDetail'), ftp = api.ftp(), next = $('selNext'); P.kind = selKind; api.saveS();
     const nx = (label, fn, ok = true) => { next.hidden = false; next.textContent = label; next.disabled = !ok; next.onclick = fn; };
-    if (selKind === 'plan') {
-      const list = api.sessions();
-      box.innerHTML = list.length ? `<h2>Scegli la seduta</h2><label class="f">Seduta<select id="plSel">${list.map(s => `<option value="${esc(s.id)}" ${s.id === P.sessId ? 'selected' : ''}>${esc((s.date ? s.date.slice(8) + '/' + s.date.slice(5, 7) + ' ' + (s.time || '') + ' · ' : '') + s.title + (s.mine ? ' ✎' : ''))}</option>`).join('')}</select></label>
-        <div class="note" id="plNote"></div>${routeBlock(P)}<div class="rowb"><label class="mc small" for="plFile">📂 CARICA piano-app.json</label><input type="file" id="plFile" accept=".json" hidden></div>`
-        : `<h2>Nessun piano caricato</h2><p>Trascina <b>piano-app.json</b> in questa pagina, oppure scegli il file. Se hai collegato la cartella dati, il piano viene letto da lì.</p><div class="rowb"><label class="mc" for="plFile">📂 CARICA piano-app.json</label><input type="file" id="plFile" accept=".json" hidden></div><p class="hint">Oppure crea tu un workout: «CREA UN EVENTO».</p>`;
-      const sel = $('plSel'); const upd = () => { const s = list.find(x => x.id === sel.value); P.sessId = s ? s.id : ''; api.saveS(); $('plNote').textContent = s ? `${s.notes || 'Nessuna nota.'} · ${s.steps} step · ${fmt(s.total)}` : ''; if (s) api.chooseSession(s.id); };
-      if (sel) { if (!list.some(x => x.id === P.sessId)) sel.selectedIndex = api.defaultSessionIndex(); sel.onchange = upd; upd(); }
-      const f = $('plFile'); if (f) f.onchange = async e => { if (e.target.files[0]) { await api.loadPlanFile(e.target.files[0]); select(); } };
-      bindRoute(P); nx('AVANTI → COLLEGA', () => show('connect'), !!list.length);
+    if (selKind === 'plan' || selKind === 'ramp' || selKind === 'ftp20') {
+      planDetail(box, P, ftp, next, nx);
     } else if (selKind === 'create') {
       const mine = api.myWorkouts();
-      box.innerHTML = `<h2>I tuoi workout</h2>${mine.length ? mine.map(w => `<div class="wk"><b>${esc(w.title)}</b><span>${w.steps} step · ${fmt(w.total)}</span><button class="mc small" data-edit="${esc(w.id)}">MODIFICA</button><button class="mc small" data-del="${esc(w.id)}">ELIMINA</button></div>`).join('') : '<p>Ancora nessun workout.</p>'}<button class="mc big2" id="newWk">+ NUOVO WORKOUT</button>`;
+      box.innerHTML = `<h2>I tuoi allenamenti</h2>${mine.length ? mine.map(w => `<div class="wk"><b>${esc(w.title)}</b><span>${w.steps} step · ${fmt(w.total)}</span><button class="mc small" data-edit="${esc(w.id)}">MODIFICA</button><button class="mc small" data-del="${esc(w.id)}">ELIMINA</button></div>`).join('') : '<p>Ancora nessun allenamento.</p>'}<button class="mc big2" id="newWk">+ NUOVO ALLENAMENTO</button>`;
       $('newWk').onclick = () => show('creator', null);
       box.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => show('creator', b.dataset.edit));
-      box.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { if (confirm('Eliminare questo workout?')) { api.deleteWorkout(b.dataset.del); select(); } });
+      box.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { if (confirm('Eliminare questo allenamento?')) { api.deleteWorkout(b.dataset.del); select(); } });
       next.hidden = true;
     } else if (selKind === 'free') {
       box.innerHTML = `<h2>Pedalata libera</h2><p>Il trainer simula la pendenza del percorso (come in Zwift): in salita senti più resistenza, in discesa meno. Nessun obiettivo, nessun limite di tempo: premi «Termina» quando hai finito.</p>${routeBlock(P)}<p class="hint">Se il tuo trainer non accetta la modalità a pendenza, l'app passa a un carico fisso che regoli con ↑/↓.</p>`;
@@ -240,7 +266,7 @@ export function createScreens(api) {
     const rowBtns = path => `<span class="rb"><button class="mc xs" data-op="up:${path}" title="Su">↑</button><button class="mc xs" data-op="down:${path}" title="Giù">↓</button><button class="mc xs" data-op="dup:${path}" title="Duplica">⧉</button><button class="mc xs danger" data-op="del:${path}" title="Elimina">✕</button></span>`;
     const draw = () => {
       const c = check(E.nodes, ftp);
-      root.innerHTML = `<div class="panel wide"><h1>${id ? 'MODIFICA WORKOUT' : 'NUOVO WORKOUT'}</h1>
+      root.innerHTML = `<div class="panel wide"><h1>${id ? 'MODIFICA ALLENAMENTO' : 'NUOVO ALLENAMENTO'}</h1>
         <div class="split3"><label class="f">Nome<input type="text" id="wkTitle" value="${esc(E.title)}" maxlength="40" placeholder="es. 4×8' sweet spot"></label><label class="f">Note (facoltative)<input type="text" id="wkNotes" value="${esc(E.notes)}" maxlength="120"></label></div>
         <div class="steps" id="steps">${E.nodes.map((n, i) => nodeHtml(n, String(i), 0)).join('')}</div>
         <div class="rowb"><span class="lbl">AGGIUNGI:</span>${TYPES.map(t => `<button class="mc small" data-add="root:${t[0]}">${t[1].toUpperCase()}</button>`).join('')}<button class="mc small" data-add="root:rep">+ RIPETIZIONE</button></div>
