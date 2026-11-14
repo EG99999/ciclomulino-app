@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Gatti Elia
 import { parsePlan, pickSession, localISODate, DEFAULT_FTP, LIMITS, validSession, workoutStats } from './plan.js';
+import { coachTextToPlanText } from './coachplan.js';
 import { Session } from './session.js';
 import { ERG_CFG } from './erg.js';
 import { speedFor } from './physics.js';
@@ -113,6 +114,8 @@ function rebuildPlan() {
 function loadPlanText(text, persist = true, internal = false) {
   if (typeof text !== 'string' || text.length > LIMITS.bytes) { toast('Piano troppo grande (max ' + LIMITS.bytes / 1e6 + ' MB): non lo leggo'); return false; }
   if (!internal && busyRide()) { A.pending = { plan: text, persist }; toast('Seduta in corso: il nuovo piano si applica quando esci'); return false; }
+  { const c = coachTextToPlanText(text, { today: localISODate(), ftp: S.ftpMode === 'personal' && S.ftp > 0 ? S.ftp : undefined });
+    if (c.coach) { if (!c.count) { toast('Piano del coach: nessuna seduta ciclomulino con watt nei prossimi giorni'); return false; } text = c.text; } }      // il piano può arrivare dal coach (sedute con struttura): lo converto qui
   const r = parsePlan(mergeCloud(text));
   showWarnings(r);
   D.log('plan.load', { bytes: text.length, ok: r.ok, sessions: r.sessions.length, ftp: r.ftp, errors: r.errors.slice(0, 3), warnings: r.warnings.length, persist, internal });
