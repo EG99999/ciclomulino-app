@@ -70,3 +70,11 @@ test('app: il file piano può essere quello del coach (elenco o { ftp, zones, se
   assert.equal(coachTextToPlanText('non json', {}).coach, false); assert.equal(isCoachPlan([]), false); assert.equal(isCoachPlan([{ id: 1 }]), false);
   assert.equal(coachTextToPlanText(JSON.stringify([sess({ data: '2020-01-01' })]), { today: TODAY }).count, 0, 'nessuna seduta futura: conteggio zero');
 });
+
+test('scrittura del file: il file caricato dalla chat del coach (sedute grezze, senza source) si può riscrivere; un piano a mano no', () => {
+  const { plan } = conv([sess({})]);
+  const dalChat = JSON.stringify({ ftp: 289, zones: [0, 162, 216, 261, 302, 348, 438], sessions: [sess({})] });
+  assert.equal(decideWrite(plan, dalChat), 'scrivi', 'il file grezzo del coach è nostro');
+  const aMano = JSON.stringify({ ftp: 271, sessions: [{ id: 'mia', blocks: [{ t: 'work', d: 60, lo: 200, hi: 220 }] }] });
+  assert.equal(decideWrite(plan, aMano), 'non-mio', 'un piano a mano con blocchi non si tocca');
+});

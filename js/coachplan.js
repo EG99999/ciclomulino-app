@@ -87,7 +87,8 @@ export function decideWrite(plan, existingText, { overwrite = false } = {}) {
   if (!plan.sessions.length) return 'vuoto';
   if (existingText) {
     let old = null; try { old = JSON.parse(existingText); } catch { /* file rovinato: lo si può rifare */ }
-    if (old && old.source !== SOURCE && !overwrite) return 'non-mio';
+    // è «mio» anche il file con le sedute del coach caricato dalla chat (formato { ftp, zones, sessions }, senza `source`)
+    if (old && old.source !== SOURCE && !isCoachPlan(old) && !overwrite) return 'non-mio';
     if (old && old.source === SOURCE && !planChanged(plan, old)) return 'invariato';
   }
   return 'scrivi';
