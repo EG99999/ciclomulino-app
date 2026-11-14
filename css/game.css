@@ -133,3 +133,34 @@ button:focus-visible,select:focus-visible,.btn:focus-within{outline:3px solid va
 .recdot{position:absolute;left:8px;top:24px;z-index:7;font-family:var(--px);font-size:7px;color:#ff4d6d;background:rgba(10,8,28,.7);padding:3px 6px;pointer-events:none}
 .recdot[hidden],.dbgp[hidden]{display:none}
 .dbgp{position:absolute;left:8px;top:44px;z-index:8;margin:0;max-width:min(440px,94vw);max-height:70vh;overflow:hidden;background:rgba(6,6,18,.88);border:2px solid var(--line);padding:6px 8px;font-family:Consolas,"Courier New",monospace;font-size:12px;line-height:1.35;color:#d8d6f0;white-space:pre-wrap;pointer-events:none}
+
+/* ---- schermo di pedalata, layout C (14 nov 2026): menu unico, dati grandi in basso al centro, allenamento in alto al centro ---- */
+.topbar{justify-content:flex-end;padding:max(10px,env(safe-area-inset-top)) 12px 0;pointer-events:none}
+.topbar>*{pointer-events:auto}
+#btnMenu{font-size:11px;padding:10px 12px;gap:9px;align-items:center}
+.dots{display:inline-flex;gap:5px} .dots i{width:11px;height:11px;border:2px solid #000;background:var(--bad);display:block} .dots i.on{background:var(--ok)} .dots i.scan{background:var(--acc)}
+.mhdr{display:flex;flex-wrap:wrap;gap:4px 14px;justify-content:space-between;font-family:var(--px);font-size:8px;color:var(--acc)} .mhdr b{font-weight:400;color:var(--ink);font-family:var(--vt);font-size:19px}
+.hudl{position:absolute;left:12px;top:10px;width:clamp(210px,19vw,270px);display:grid;gap:8px}
+.hl-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.hudl .tile .v{font-size:clamp(14px,1.7vw,24px)} .hudl .tile .s{font-size:16px}
+.wkp{position:absolute;left:50%;top:10px;transform:translateX(-50%);margin:0;width:clamp(270px,34vw,450px);min-width:0;text-align:center;background:rgba(20,16,44,.7);gap:4px}
+.wkp .row{justify-content:center}
+.wkname{font-family:var(--px);font-size:clamp(9px,1vw,12px);color:var(--cool);line-height:1.5}
+.wkt{font-family:var(--px);font-size:clamp(22px,3vw,38px);line-height:1.1}
+.bar.thin{height:8px;margin:0 0 4px}
+.side{position:absolute;right:12px;top:60px;bottom:auto;width:clamp(230px,22vw,300px);min-width:0}
+.cluster{position:absolute;left:50%;transform:translateX(-50%);bottom:116px;width:min(920px,calc(100vw - 24px));max-height:33vh;display:grid;grid-template-columns:1fr 1.6fr 1fr 1fr;gap:10px;align-items:center;text-align:center;background:rgba(20,16,44,.5);border:3px solid var(--line);padding:10px}
+.cluster .tile{background:none;border:3px solid transparent;padding:8px 4px} .cluster .tile .l{font-size:clamp(7px,.8vw,10px)}
+.cluster .tile .v{font-size:clamp(22px,3.1vw,40px)} .cluster .tile.pw .v{font-size:clamp(34px,5.4vw,70px)} .cluster .tile .s{font-size:clamp(17px,1.7vw,24px)}
+.cluster .tile .l b{color:var(--ink);font-weight:400}
+.rbn{position:absolute;left:12px;right:12px;bottom:max(10px,env(safe-area-inset-bottom));display:grid;gap:4px}
+.rbn .rt{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:2px 16px;color:var(--mute);font-size:20px} .rbn .rt b{font-weight:400;color:var(--ink)} .rbn .rt>b{font-family:var(--px);font-size:10px;color:var(--acc)}
+#ribbon{position:static;transform:none;width:100%;height:56px;border:3px solid var(--line);background:rgba(20,16,44,.62);image-rendering:pixelated}
+.goz{left:50%;top:44%;bottom:auto;transform:translate(-50%,-50%);z-index:4}
+.goz button{font-size:16px;padding:22px 34px;min-height:0;width:auto;box-shadow:inset 0 0 0 3px rgba(255,255,255,.18),0 8px 0 rgba(0,0,0,.4)}
+.coach{top:150px} .env{top:210px} .lives{top:140px;left:auto;right:12px;transform:none}
+.keyhelp{left:12px;bottom:116px;transform:none}
+#cc{display:none !important}
+@media(max-width:1000px){.hudl .nxcard,.hudl .pgcard{display:none} .cluster{grid-template-columns:1fr 1.4fr 1fr 1fr}}
+@media(max-width:760px){.hudl{width:44vw;top:8px} .hudl .tile .s{display:none} .wkp{width:calc(100vw - 24px);top:auto;bottom:228px} .side{display:none} .cluster{bottom:128px;grid-template-columns:1fr 1fr;max-height:none} .goz{top:34%} .coach{top:130px}}
+.wkt{white-space:nowrap;font-size:clamp(16px,2.3vw,30px)}

@@ -4,6 +4,11 @@
    Sfondo = il gioco che continua dietro, sfocato. */
 body[data-screen]:not([data-screen=ride]):not([data-screen=tut]) .topbar,
 body[data-screen]:not([data-screen=ride]):not([data-screen=tut]) .stats,
+body[data-screen]:not([data-screen=ride]):not([data-screen=tut]) .hudl,
+body[data-screen]:not([data-screen=ride]):not([data-screen=tut]) .wkp,
+body[data-screen]:not([data-screen=ride]):not([data-screen=tut]) .side,
+body[data-screen]:not([data-screen=ride]):not([data-screen=tut]) .cluster,
+body[data-screen]:not([data-screen=ride]):not([data-screen=tut]) .rbn,
 body[data-screen]:not([data-screen=ride]):not([data-screen=tut]) .bottom,
 body[data-screen]:not([data-screen=ride]):not([data-screen=tut]) .goz,
 body[data-screen]:not([data-screen=ride]):not([data-screen=tut]) #ribbon,

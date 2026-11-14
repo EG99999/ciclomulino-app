@@ -29,42 +29,36 @@
   <pre id="dbg" class="dbgp" hidden></pre>
 
   <div class="topbar">
-    <span class="logo">OPEN TRAINER</span>
-    <div class="meta">
-      <span><b id="wkType">—</b></span>
-      <span class="bk">🚲 <b id="bikeName">—</b></span>
-      <span><b id="clock">—</b></span>
-      <span>⏱ <b id="tTot">0:00</b> / <b id="tTotMax">0:00</b></span>
-    </div>
-    <div class="conns">
-      <button class="conn off" id="btnHome" hidden>🏠 HOME</button>
-      <button class="conn off" id="btnTrainer">⚡ TRAINER</button>
-      <button class="conn off" id="btnHr">♥ FC</button>
-      <button class="conn off" id="btnCam" title="Cambia visuale (V)">🎥 VISTA</button>
-      <button class="conn off" id="btnMenu" aria-expanded="false">☰ MENU</button>
-    </div>
+    <button class="conn off" id="btnMenu" aria-expanded="false" title="Menu (M)">☰ MENU <span class="dots" aria-hidden="true"><i id="dotTr" class="off" title="Trainer"></i><i id="dotHr" class="off" title="Frequenza cardiaca"></i></span></button>
   </div>
 
-  <div hidden><span id="hudW"></span><span id="hudTgt"></span><span id="hudHR"></span><span id="hudCad"></span></div>
+  <div hidden><span id="hudW"></span><span id="hudTgt"></span><span id="hudHR"></span><span id="hudCad"></span><b id="tAS">0</b></div>
 
-  <div class="stats left">
-    <div class="tile pw big" id="tileW"><div class="l">WATT</div><div class="v" id="tW">0</div><div class="s" id="tTgt">—</div></div>
-    <div class="tile"><div class="l">MEDIA 3"</div><div class="v" id="tA3">0</div><div class="s">W</div></div>
-    <div class="tile"><div class="l">MEDIA STEP</div><div class="v" id="tAS">0</div><div class="s">W</div></div>
-    <div class="tile"><div class="l">% FTP</div><div class="v" id="tPct">0</div><div class="s" id="tFtp">FTP — W</div></div>
-    <div class="tile"><div class="l">W/KG</div><div class="v" id="tWkg">—</div><div class="s" id="tWkgAvg">peso nelle impostazioni</div></div>
+  <div class="hudl">
+    <div class="hl-grid">
+      <div class="tile"><div class="l">% FTP</div><div class="v" id="tPct">0</div><div class="s" id="tFtp">FTP — W</div></div>
+      <div class="tile"><div class="l">W/KG</div><div class="v" id="tWkg">—</div><div class="s" id="tWkgAvg">peso nelle impostazioni</div></div>
+      <div class="tile"><div class="l">CARICO ERG</div><div class="v" id="tL">100</div><div class="s">%</div></div>
+      <div class="tile"><div class="l">PENDENZA</div><div class="v" id="tGr">0</div><div class="s" id="tDp">D+ 0 m</div></div>
+    </div>
     <div class="card pgcard"><div class="l">POTENZA · ULTIMI 2'</div><canvas id="pgraph" width="240" height="76"></canvas></div>
-  </div>
-  <div class="stats right">
-    <div class="tile cd"><div class="l">CADENZA</div><div class="v" id="tCad">0</div><div class="s">rpm</div></div>
-    <div class="tile hr"><div class="l">FC</div><div class="v" id="tHR">--</div><div class="s">bpm</div></div>
-    <div class="tile"><div class="l">KM/H</div><div class="v" id="tKmh">0</div><div class="s" id="tKm">0.0 km</div></div>
-    <div class="tile"><div class="l">PENDENZA</div><div class="v" id="tGr">0</div><div class="s" id="tDp">D+ 0 m</div></div>
-    <div class="tile"><div class="l">CARICO ERG</div><div class="v" id="tL">100</div><div class="s">%</div></div>
     <div class="card nxcard"><div class="l">PROSSIMI STEP</div><div id="nextList"></div></div>
   </div>
 
-  <canvas id="ribbon" width="720" height="54"></canvas>
+  <div class="stepbar wkp">
+    <div class="wkname" id="stName">—</div>
+    <div class="wkt" id="stT">0:00</div>
+    <div class="bar"><i id="stBar"></i></div>
+    <div class="row mute"><span>Serie: <b id="serie">—</b></span><span>Blocchi: <b id="blocchi">—</b></span><span>Prossimo: <b id="next">—</b></span></div>
+    <div class="row mute" id="stExtra"></div>
+  </div>
+
+  <div class="side">
+    <div class="seg"><span class="sl">ALTIMETRIA</span><span class="sl">PERCORSO</span><span class="hint" id="geo">0.0 km · 0%</span></div>
+    <div class="sc"><canvas id="side" width="240" height="80"></canvas><canvas id="map" width="160" height="80"></canvas></div>
+    <div class="osm" id="osmAttr" hidden>© OpenStreetMap contributors · quote EU-DEM © Copernicus</div>
+  </div>
+
   <div class="coach" id="coach"></div>
   <div class="banner" id="banner">PRONTO</div>
   <div class="keyhelp" id="keyhelp" hidden><b>↑</b> pedala <b>↓</b> frena <b>← →</b> sterza <b>SPAZIO</b> salta <b>P</b> pausa <b>ESC</b> esci</div>
@@ -72,26 +66,26 @@
   <div class="lives" id="lives" hidden aria-label="Vite"></div>
   <div class="cc" id="cc" hidden title="Clic per cambiare pagina (tasto C)"></div>
 
-  <div class="bottom">
-    <div class="stepbar">
-      <div class="row"><span class="stepname" id="stName">—</span><span>Step: <b id="stT" class="acc">0:00</b></span></div>
-      <div class="bar"><i id="stBar"></i></div>
-      <div class="row mute">
-        <span>Serie: <b id="serie">—</b></span>
-        <span>Blocchi: <b id="blocchi">—</b></span>
-        <span>Prossimo: <b id="next">—</b></span>
-      </div>
-      <div class="row mute" id="stExtra"></div>
-    </div>
-    <div class="side">
-      <div class="seg"><span class="sl">ALTIMETRIA</span><span class="sl">PERCORSO</span><span class="hint" id="geo">0.0 km · 0%</span></div>
-      <div class="sc"><canvas id="side" width="240" height="80"></canvas><canvas id="map" width="160" height="80"></canvas></div>
-      <div class="osm" id="osmAttr" hidden>© OpenStreetMap contributors · quote EU-DEM © Copernicus</div>
-    </div>
+  <div class="cluster">
+    <div class="tile cd"><div class="l">CADENZA</div><div class="v" id="tCad">0</div><div class="s">rpm</div></div>
+    <div class="tile pw big" id="tileW"><div class="l">POTENZA · MEDIA 3″ <b id="tA3">0</b> W</div><div class="v" id="tW">0</div><div class="s" id="tTgt">—</div></div>
+    <div class="tile hr"><div class="l">FREQUENZA CARDIACA</div><div class="v" id="tHR">--</div><div class="s">bpm</div></div>
+    <div class="tile sp"><div class="l">VELOCITÀ</div><div class="v" id="tKmh">0</div><div class="s" id="tKm">0.0 km</div></div>
+  </div>
+
+  <div class="rbn">
+    <div class="rt"><b id="wkType">—</b><span>trascorso <b id="tTot">0:00</b> · manca <b id="tRem">—</b> · totale <b id="tTotMax">0:00</b></span><span>serie <b id="serieNow">—</b> · fine serie <b id="bkLeft">—</b></span></div>
+    <div class="bar thin" id="bkWrap"><i id="bkBar"></i></div>
+    <canvas id="ribbon" width="720" height="54"></canvas>
   </div>
   <div class="goz"><button class="go" id="btnGo">▶ AVVIA</button></div>
 
   <aside class="menu" id="menu" hidden>
+    <div class="mhdr"><span>OPEN TRAINER</span><span>🚲 <b id="bikeName">—</b></span><span><b id="clock">—</b></span></div>
+    <div class="ctrl">
+      <h3>COLLEGAMENTI E VISTA</h3>
+      <div class="rowb"><button class="conn off" id="btnHome" hidden>🏠 HOME</button><button class="conn off" id="btnTrainer">⚡ TRAINER</button><button class="conn off" id="btnHr">♥ FC</button><button class="conn off" id="btnCam" title="Cambia visuale (V)">🎥 VISTA</button><button id="btnPauseMenu">⏸ PAUSA</button></div>
+    </div>
     <div class="plan" id="planBox">
       <h3>PIANO</h3>
       <div class="rowb">

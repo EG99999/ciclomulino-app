@@ -426,6 +426,7 @@ $('btnFull').onclick = () => { if (document.fullscreenElement) document.exitFull
 $('btnCam').onclick = () => { G.V.cam = G.V.cam === 'third' ? 'first' : 'third'; $('btnCam').textContent = G.V.cam === 'first' ? '🎥 PRIMA PERSONA' : '🎥 VISTA'; };
 $('btnTrainer').onclick = connectTrainer; $('btnHr').onclick = connectHr; $('btnSim').onclick = toggleSim; $('btnKeys').onclick = startKeys; $('btnSound').onclick = toggleSound;
 $('goAgain').onclick = gameAgain; $('goExit').onclick = () => { $('gameover').hidden = true; if (A.mode === 'keys') stopKeys(); };
+$('btnPauseMenu').onclick = () => { toggleGo(); menuOpen(false); };
 $('btnGo').onclick = toggleGo; $('btnSkip').onclick = () => A.session && A.session.skip();
 $('btnEnd').onclick = endSession; $('btnReset').onclick = resetSession;
 $('btnFit').onclick = () => downloadFit(); $('btnCloseDone').onclick = () => { $('done').hidden = true; leaveRide(); };
@@ -573,6 +574,7 @@ function ui() {
   $('clock').textContent = d.toLocaleDateString('it-IT', { weekday: 'short', day: '2-digit', month: '2-digit' }).toUpperCase() + ' ' + d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
   $('tFtp').textContent = 'FTP ' + A.ftp + ' W';
   const connected = !!(tr && tr.connected);
+  const dc = e => e.classList.contains('on') ? 'on' : e.classList.contains('scan') ? 'scan' : 'off'; $('dotTr').className = dc($('btnTrainer')); $('dotHr').className = dc($('btnHr'));      // i due pallini sul pulsante menu: trainer e FC
   const b = $('banner'); b.className = 'banner'; let m = '';
   if (!s) { m = 'CARICA piano-app.json'; }
   else if (!connected && !(s.paused && s.pauseReason === 'trainer')) { m = 'COLLEGA IL TRAINER O ATTIVA IL SIMULATORE'; b.classList.add('red'); }
@@ -587,7 +589,7 @@ function ui() {
   else if (s.rampT < ERG_CFG.stepRampSec && s.idx > 0 && A.mode !== 'keys') { m = 'TRANSIZIONE…'; b.classList.add('grn'); }
   b.hidden = !m; b.textContent = m;
   $('fps').textContent = 'FPS ' + A.fps + ' · disegno ' + A.drawMs.toFixed(1) + ' ms';
-  if (!s) { $('btnGo').textContent = '▶ AVVIA'; $('btnGo').disabled = true; return; }
+  if (!s) { $('btnGo').textContent = '▶ AVVIA'; $('btnGo').disabled = true; $('btnGo').parentElement.hidden = true; return; }
   $('btnGo').disabled = s.done || A.mode === 'keys';
   $('btnHome').hidden = false;
   const st = s.step, keys = A.mode === 'keys', open = keys || A.mode === 'free';
@@ -618,6 +620,13 @@ function ui() {
   $('geo').textContent = (s.dist / 1000).toFixed(1) + ' km · ' + s.grade.toFixed(1) + '%';
   $('btnGo').textContent = !s.started ? '▶ AVVIA' : s.paused ? '▶ RIPRENDI' : '⏸ PAUSA';
   $('btnGo').className = s.started && !s.paused ? 'stop' : 'go';
+  $('btnGo').parentElement.hidden = (s.started && !s.paused && !s.done) || A.mode === 'keys';      // AVVIA / RIPRENDI compare al centro solo quando si è fermi
+  $('btnPauseMenu').textContent = !s.started ? '▶ AVVIA' : s.paused ? '▶ RIPRENDI' : '⏸ PAUSA'; $('btnPauseMenu').disabled = s.done || A.mode === 'keys';
+  // tempo rimasto, serie e fine serie (blocco)
+  $('tRem').textContent = open ? '∞' : fmt(Math.max(0, s.totalEst - s.t));
+  { let left = null, tot = null; if (!open && !s.done) { let acc = st.d != null ? Math.max(0, st.d - s.stepT) : 0, all = st.dEst || 0; for (let k = s.idx + 1; k < s.steps.length && s.steps[k].bi === st.bi; k++) acc += s.steps[k].dEst || 0; for (let k = s.idx - 1; k >= 0 && s.steps[k].bi === st.bi; k--) all += s.steps[k].dEst || 0; for (let k = s.idx + 1; k < s.steps.length && s.steps[k].bi === st.bi; k++) all += s.steps[k].dEst || 0; left = acc; tot = all; }
+    $('bkLeft').textContent = left == null ? '—' : fmt(left); $('bkBar').style.width = left == null || !tot ? '0%' : Math.round(clamp(1 - left / tot, 0, 1) * 100) + '%'; $('bkWrap').style.visibility = left == null ? 'hidden' : 'visible';
+    $('serieNow').textContent = !open && st.reps ? st.rep + '/' + st.reps : '—'; }
   // prossimi step (come l'elenco allenamento di Zwift)
   const nx = keys ? [] : s.steps.slice(s.idx + 1, s.idx + 4);
   $('nextList').innerHTML = nx.length ? nx.map(x => `<div><i style="background:${zoneCol(x.mid / A.ftp * 100)}"></i><span>${esc(x.n)}</span><b>${x.d != null ? fmt(x.d) : x.dist + ' m'}</b><em>${x.lo}${x.hi !== x.lo ? '-' + x.hi : ''} W</em></div>`).join('') : '<div class="mute">' + (keys ? 'Schiva le buche con SPAZIO' : 'Ultimo step') + '</div>';
@@ -954,21 +963,21 @@ function startTutorial() {
   menuOpen(false); scr && scr.park(); document.body.dataset.screen = 'tut';
   const T = [
     { title: 'Il gioco in 1 minuto', text: 'La strada è al centro, i numeri ti stanno intorno. Ti mostro i pezzi uno alla volta: con AVANTI proseguire, con ESCI chiudi.' },
-    { sel: '.stats.left', title: 'I tuoi watt', text: 'Watt in grande, <b>colorati per zona</b>: grigio facile, blu, verde, giallo, arancio, rosso, viola al massimo. Sotto: media degli ultimi 3", media dello step e % della tua FTP.' },
-    { sel: '.stats.right', title: 'Cadenza, FC, velocità', text: 'Cadenza (rpm), frequenza cardiaca, km/h, pendenza e <b>carico ERG</b>: se pedali sotto 60 rpm per 5" il carico scende al 50%, sopra 75 rpm per 3" torna al 100%.' },
+    { sel: '.cluster', title: 'I tuoi dati', text: 'In basso al centro: cadenza, <b>watt in grande colorati per zona</b> (con la media degli ultimi 3 secondi e il target), frequenza cardiaca e velocità.' },
+    { sel: '.hudl', title: 'FTP, carico e pendenza', text: 'In alto a sinistra: % FTP, watt per chilo, <b>carico ERG</b> (se pedali sotto 60 rpm per 5" scende al 50%, sopra 75 rpm per 3" torna al 100%), pendenza, il grafico degli ultimi 2 minuti e i prossimi step.' },
     { sel: '#ribbon', title: 'La barra dell\'allenamento', text: 'Ogni colonna è uno step: altezza = watt, colore = zona. La linea bianca sei tu. Si vede quando hai caricato un piano.' },
     { sel: '.stepbar', title: 'Lo step in corso', text: 'Nome, tempo rimasto, serie e blocchi che mancano e il prossimo step. Un beep suona al cambio e negli ultimi 3 secondi.' },
     { sel: '.side', title: 'Altimetria e percorso', text: 'A sinistra il profilo del percorso (colore = pendenza), a destra la mappa con il tuo punto e i paesi.' },
-    { sel: '#btnTrainer', title: 'Collega il trainer', text: 'Il Suito-T si collega col Bluetooth (serve Edge o Chrome). Se si scollega l\'allenamento va in pausa da solo.' },
-    { sel: '#btnHr', title: 'Frequenza cardiaca', text: 'L\'orologio in modalità broadcast o una fascia cardio compaiono nell\'elenco.' },
-    { sel: '#btnMenu', title: 'Il menu', text: 'Qui trovi piano, percorsi, simulatore, bici, suoni, OneDrive e questo tutorial. Scorciatoia: tasto <b>M</b>.' },
+    { sel: '#btnTrainer', before: () => menuOpen(true), title: 'Collega il trainer', text: 'Il Suito-T si collega col Bluetooth (serve Edge o Chrome). Se si scollega l\'allenamento va in pausa da solo.' },
+    { sel: '#btnHr', before: () => menuOpen(true), title: 'Frequenza cardiaca', text: 'L\'orologio in modalità broadcast o una fascia cardio compaiono nell\'elenco.' },
+    { sel: '#btnMenu', before: () => menuOpen(false), title: 'Il menu', text: 'Un solo pulsante in alto a destra: dentro trovi home, vista, trainer, FC, piano, percorsi, simulatore, bici, suoni, OneDrive e questo tutorial. I due pallini dicono se trainer e FC sono collegati. Scorciatoia: tasto <b>M</b>.' },
     { sel: '#planBox', before: () => menuOpen(true), title: 'Il piano', text: 'Trascina <i>piano-app.json</i> ovunque nell\'app, oppure usa il pulsante. Se hai più sedute, scegli dall\'elenco: quella di oggi è già selezionata.' },
     { sel: '#routeSel', before: () => menuOpen(true), title: 'Percorsi reali', text: 'Scegli un percorso della provincia di Brescia o importa un file GPX/TCX da Garmin Connect: pendenze e curve diventano quelle vere.' },
     { sel: '#btnSim', before: () => menuOpen(true), title: 'Simulatore', text: 'Fa finta di essere trainer e cardio: perfetto per provare tutto senza pedalare. Puoi anche simulare fatica e perdita di segnale.' },
     { sel: '#btnKeys', before: () => menuOpen(true), title: 'Modalità tastiera', text: 'Una modalità gioco: ↑ pedala, ← → sterza, Spazio salta le buche e i lavori in corso.' },
     { sel: '#cloudBox', before: () => menuOpen(true), title: 'OneDrive (facoltativo)', text: 'Se vuoi, il piano arriva da OneDrive e i .FIT ci vengono salvati da soli. L\'app vede solo la sua cartella «Apps/Open Trainer».' },
-    { sel: '#btnGo', before: () => menuOpen(false), title: 'Avvia, pausa, auto-pausa', text: 'Avvia la seduta (o Spazio). Se ti fermi sui pedali per 5" va in pausa da sola e riparte appena pedali.' },
-    { sel: '#btnCam', before: () => menuOpen(false), title: 'Vista', text: 'Cambia tra vista da dietro e prima persona (tasto <b>V</b>). <b>F</b> schermo intero, <b>N</b> suoni.' },
+    { sel: '#btnGo', before: () => menuOpen(false), title: 'Avvia e riprendi', text: 'Il pulsante compare al centro solo quando sei fermo (o prima di partire). Per pausa e ripresa c\'è anche Spazio. Se ti fermi sui pedali va in pausa da sola e riparte appena pedali.' },
+    { sel: '#btnCam', before: () => menuOpen(true), title: 'Vista', text: 'Cambia tra vista da dietro e prima persona (tasto <b>V</b>). <b>F</b> schermo intero, <b>N</b> suoni.' },
     { title: 'Non perdi niente', text: 'La seduta si salva ogni 5": se il browser si chiude ti propone di riprendere o di scaricare il .FIT. A fine seduta scarichi il file da importare su Garmin Connect.' }
   ];
   runTutorial(T, { onEnd: () => { menuOpen(false); document.body.dataset.screen = A.screen; S.tutorialDone = true; saveS(); } });
