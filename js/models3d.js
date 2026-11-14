@@ -101,8 +101,14 @@ export function bikerMesh(o) {
   const { shirt, jersey2, shorts, helmet, skin, frame, accent, deep = 0, scale = 1, backTex = null } = o;
   const g = new THREE.Group(), legs = [], lean = new THREE.Group(); g.add(lean);
   const rim = deep >= 2 ? 0.34 : deep ? 0.18 : 0.1;
-  part(rim, 0.85, 0.85 * 0.18, 0x15131f, 0, 0, -0.78, lean); part(rim, 0.85, 0.85 * 0.18, 0x15131f, 0, 0, 0.78, lean);         // ruote (viste di taglio)
-  part(rim * 0.6, 0.86, 0.04, accent, 0, 0, 0.78, lean);
+  const wheels = [];                                                                                                                 // ruote vere: pneumatico a ciambella, cerchio colorato, raggi che girano
+  for (const z of [-0.78, 0.78]) {
+    const w = new THREE.Group(); w.position.set(0, 0.43, z);
+    const tire = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.035 + rim * 0.12, 6, 18), pmat(0x15131f)); tire.rotation.y = Math.PI / 2; w.add(tire);
+    const rm = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.02 + rim * 0.05, 4, 18), pmat(accent)); rm.rotation.y = Math.PI / 2; w.add(rm);
+    for (let k = 0; k < 3; k++) { const sp = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.72, 0.02), pmat(0xc9c9d4)); sp.rotation.x = k * Math.PI / 3; w.add(sp); }
+    lean.add(w); wheels.push(w);
+  }
   part(0.08, 0.1, 1.5, frame, 0, 0.62, 0, lean); part(0.08, 0.7, 0.08, frame, 0, 0.1, -0.25, lean); part(0.08, 0.5, 0.08, frame, 0, 0.55, 0.6, lean); part(0.3, 0.07, 0.4, 0x111111, 0, 0.9, -0.3, lean);
   part(0.55, 0.05, 0.06, 0x22222e, 0, 1.1, 0.62, lean);                                                                         // manubrio
   const torso = new THREE.Group(); torso.position.set(0, 0.95, -0.15); lean.add(torso); torso.rotation.x = 0.55;
@@ -115,7 +121,7 @@ export function bikerMesh(o) {
   const armL = mkArm(-0.3), armR = mkArm(0.3);
   for (const sx of [-0.14, 0.14]) { const l = new THREE.Group(); l.position.set(sx, 0.92, -0.25); part(0.16, 0.5, 0.16, shorts, 0, -0.5, 0, l); part(0.17, 0.12, 0.2, 0xdddddd, 0, -0.55, 0.04, l); lean.add(l); legs.push(l); }
   const bottle = part(0.1, 0.22, 0.1, 0x4bc4ff, 0.3, 0.1, 0.1, g); bottle.visible = false;
-  g.userData = { legs, torso, head, armL, armR, lean, bottle }; g.scale.setScalar(scale); blob(1.0, g); return g;
+  g.userData = { legs, torso, head, armL, armR, lean, bottle, wheels }; g.scale.setScalar(scale); blob(1.0, g); return g;
 }
 /** testo in un fumetto (sprite) */
 export function bubbleSprite(text, color = '#f4f1ff', ink = '#14102c') {

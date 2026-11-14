@@ -97,7 +97,8 @@ export class Session {
     if (this.started && !this.done && connected) {
       const still = (!cadKnown || cad < 5) && power < 8;
       const moving = (cadKnown && cad >= this.cfg.resumeCad) || power >= this.cfg.resumeW;      // si riparte pedalando, anche piano; se la cadenza non arriva o resta a zero bastano i watt
-      if (!this.paused) { this.stillT = still ? this.stillT + dt : 0; if (this.stillT >= this.cfg.autoPauseSec) { this.stillT = 0; this.pause('auto'); } }
+      // la pausa automatica scatta solo quando il ciclista si è fermato davvero: dopo aver smesso di pedalare prosegue per inerzia
+      if (!this.paused) { this.stillT = still ? this.stillT + dt : 0; if (this.stillT >= this.cfg.autoPauseSec && this.speed < 0.5) { this.stillT = 0; this.pause('auto'); } }
       // un dato basso isolato (a bassi giri la cadenza si aggiorna a scatti) non azzera tutto: il contatore scende piano invece di tornare a zero
       else if (this.pauseReason === 'auto') { this.moveT = moving ? this.moveT + dt : Math.max(0, this.moveT - dt * 0.5); if (this.moveT >= this.cfg.autoResumeSec) { this.moveT = 0; this.resume(); } }
     }
@@ -106,7 +107,8 @@ export class Session {
     if (active) {
       this.t += dt; this.stepT += dt; this.rampT += dt;
       this.grade = s.grade != null ? s.grade : (grade != null ? grade : s.slope);   // pendenza forzata dal coach > percorso reale > generata dal workout
-      this.speed = speedFor(power, this.grade);
+      const tgt = speedFor(power, this.grade);                       // inerzia: in accelerazione segue in ~1 s; smettendo di pedalare prosegue e rallenta (almeno 0,35 m/s² e circa 2,5 s di costante), poi si ferma
+      if (tgt >= this.speed) this.speed += (tgt - this.speed) * (1 - Math.exp(-dt / 1.0)); else this.speed = Math.max(tgt, this.speed - Math.max(0.35, (this.speed - tgt) / 2.5) * dt);
       this.stepDist += this.speed * dt; this.dist += this.speed * dt;
       // fine step
       const over = s.d != null ? this.stepT >= s.d : this.stepDist >= s.dist;

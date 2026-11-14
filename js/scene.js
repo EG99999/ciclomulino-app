@@ -462,7 +462,7 @@ function stepAuto(c, dt) {
 /* Partenza libera: dopo ogni partenza o ripartenza (salto di posizione) la strada intorno al ciclista resta senza ostacoli, auto e incroci con auto,
    così non si parte mai dentro un cantiere o davanti a un camion che copre tutto lo schermo. La zona sparisce da sola quando il ciclista l'ha lasciata. */
 const CLEAR_BACK = 20, CLEAR_AHEAD = 50;
-export function clearStart(dist = V.dist) { V.clearAt = dist; V._ld = dist; }
+export function clearStart(dist = V.dist) { V.clearAt = dist; V._ld = dist; V.clearGen = (V.clearGen || 0) + 1; }      // clearGen: numero di partenze, così il 3D sa quando rifare i pezzi di mondo anche se la distanza è la stessa di prima
 /** true se la posizione z (m lungo il percorso, anche oltre un giro) cade nella zona libera della partenza */
 export function hiddenAt(z) { if (V.clearAt == null) return false; const rel = wrapD(z - V.clearAt); return rel >= -CLEAR_BACK && rel <= CLEAR_AHEAD; }
 /** true se un pezzo di mondo centrato in mid (mezza lunghezza half) tocca la zona libera */

@@ -142,7 +142,7 @@ void main(){
     }
     for (const ft of G.features) {                    // rotonde e immissioni
       const j0 = Math.ceil((d0 - ft.zc) / G.TRACK), dcf = ft.zc + j0 * G.TRACK; if (dcf < d0 || dcf >= d1 || this.envOf(dcf) === 'mountains') continue;
-      this._buildFeature(D, ft, dcf);
+      this._buildFeature(D, ft, dcf, G.hiddenAt(dcf));
     }
     // ostacoli
     for (const h of chunkHazards(c, G.hazards, G.TRACK)) { if (!V.hazards) break; if (G.hiddenAt(h.d)) continue; const f = P.frame(h.d, h.lane * ROAD_HALF); M.addHazard(D, h, { x: f.x, y: f.y + 0.05, z: f.z, yaw: f.yaw }); if (h.type === 'works') { const q = P.frame(h.d - 40, ROAD_HALF + 2); D.box(0.1, 2.2, 0.1, 0x666666, q.x, q.y, q.z); D.box(1.1, 0.8, 0.1, 0xffd24a, q.x, q.y + 2.2, q.z, q.yaw); } }
@@ -161,17 +161,19 @@ void main(){
     grp.add(T.mesh(this.matV), R.mesh(this.matV), D.mesh(this.matV)); this.world.add(grp); return grp;
   }
   /** rotonda (piazza di asfalto, isola con albero, bracci laterali, cartello) o immissione (corsia di accelerazione, riga tratteggiata, strada laterale) */
-  _buildFeature(D, f, dc) {
+  _buildFeature(D, f, dc, clear = false) {
     const P = this.path, st = this.style, asph = 0x555566, lift = (d, lat) => Math.max(0, terrainH(d, lat, st.amp, st.quant)) + 0.05;
     const seg = (d, lat, w, dd, col, dy = 0) => { const q = P.frame(d, lat); D.box(w, 0.07, dd, col, q.x, q.y + lift(d, lat) + dy, q.z, q.yaw); };
     if (f.type === 'round') {
       const c0 = P.frame(dc, -0.95), y0 = c0.y + lift(dc, -0.95);
       for (let k = 0; k < 6; k++) D.box(19.6, 0.07, 8.6, asph, c0.x, y0, c0.z, c0.yaw + k * Math.PI / 6);        // piazza rotonda: sei rettangoli ruotati
       seg(dc, 27, 36, 8, asph); seg(dc, -27, 36, 8, asph);                                                         // bracci laterali
+      if (!clear) {                                                                                                  // se si parte dentro la rotonda, l'isola con albero e cartello non c'è
       for (let k = 0; k < 3; k++) D.box(3.8, 0.3, 1.5, 0xd2d2da, c0.x, y0 + 0.02, c0.z, c0.yaw + k * Math.PI / 3);    // cordolo dell'isola
       for (let k = 0; k < 3; k++) D.box(3.3, 0.36, 1.0, 0x4f9a45, c0.x, y0 + 0.03, c0.z, c0.yaw + k * Math.PI / 3);   // erba
       D.box(0.3, 2.2, 0.3, 0x6b4a2b, c0.x, y0 + 0.3, c0.z); D.box(2.4, 1.8, 2.4, 0x2f7a30, c0.x, y0 + 2.0, c0.z); D.box(1.6, 1.3, 1.6, 0x3f8f3a, c0.x, y0 + 3.7, c0.z);
       const b = P.frame(dc - 3.4, -0.95); D.box(0.1, 1.6, 0.1, 0x555555, b.x, y0, b.z); D.box(1.7, 0.9, 0.08, 0x1b4fb0, b.x, y0 + 1.5, b.z, b.yaw); D.box(1.1, 0.14, 0.1, 0xffffff, b.x, y0 + 1.9, b.z, b.yaw);   // cartello blu
+      }
     } else {
       const zs = f.zc - 98;
       for (let d = zs - 4, i = 0; d < f.zc + 12; d += 6, i++) { seg(d + 3, 5.8, 3.8, 6.2, asph); if (i % 2 === 0) seg(d + 1.5, 3.9, 0.16, 3, 0xf4f4f4, 0.02); }
@@ -185,7 +187,7 @@ void main(){
   _ensureChunks() {
     const a = Math.floor((V.dist - 90) / CH), b = Math.floor((V.dist + this.style.view) / CH); let built = 0;
     // nuova zona libera (partenza o ripartenza): i pezzi di mondo già costruiti che la toccano si rifanno senza ostacoli (prima il nuovo, poi si butta il vecchio: la strada non sparisce mai)
-    if (V.clearAt != null && this._clr !== V.clearAt) { this._clr = V.clearAt; for (const [c, old] of this.chunks) if (G.zoneTouches(c * CH + CH / 2, CH / 2)) { this.chunks.set(c, this._buildChunk(c)); this._dispose(old); } }
+    if (V.clearAt != null && this._clrGen !== V.clearGen) { this._clrGen = V.clearGen; for (const [c, old] of this.chunks) if (G.zoneTouches(c * CH + CH / 2, CH / 2)) { this.chunks.set(c, this._buildChunk(c)); this._dispose(old); } }
     for (let c = a; c <= b; c++) if (!this.chunks.has(c) && built < 2) { this.chunks.set(c, this._buildChunk(c)); built++; }
     for (const [c, g] of this.chunks) if (c < a - 1 || c > b + 1) { this._dispose(g); this.chunks.delete(c); }
   }
@@ -211,6 +213,7 @@ void main(){
       const ob = this._moverObj(m), g = ob.g; g.visible = true;
       const lat = m.type === 'ped' ? m.side * (6.4 + (env === 'city' ? 0 : 3) + m.off * 0.12) : G.moverLane(m, rel) * ROAD_HALF, f = this.path.frame(d, lat);
       g.position.set(f.x, f.y + (m.type === 'ped' ? terrainH(d, lat, st.amp, st.quant) : 0.05), f.z);
+      if (!st.sprite && g.userData.wheels) g.userData.wheels.forEach(w => { w.rotation.x = Math.abs(m.vel) * V.time / 0.43; });
       if (!st.sprite) { g.rotation.y = f.yaw + (m.vel < 0 ? Math.PI : 0); const sw = Math.sin(V.time * (m.type === 'ped' ? 6 : 8) + m.k); if (g.userData.legs) g.userData.legs.forEach((l, i) => { l.rotation.x = (i ? -1 : 1) * sw * (m.type === 'ped' ? 0.6 : 0.7); }); }
       else if (m.type === 'ped') g.position.y += Math.abs(Math.sin(V.time * 6 + m.k)) * 0.05;
       if (m.honkUntil > V.time) { if (!ob.honk) { ob.honk = M.bubbleSprite('BEEP!', '#ffd24a'); ob.honk.position.set(0, 2.9, 0); g.add(ob.honk); } } else if (ob.honk) { this._killBubble(ob.honk); ob.honk = null; }
@@ -282,6 +285,7 @@ void main(){
     g.rotation.y = f.yaw; const u = g.userData; u.lean.rotation.z = clamp(V.lean, -1.2, 1.2) * 0.35;
     const stand = V.running && V.slope > 4.5, tuck = V.slope < -2.5, ph = V.running ? V.phase : 0, gn = V.gesture ? V.gesture.name : '', gt = V.gesture ? V.gesture.t : 0;
     u.legs.forEach((l, i) => { l.rotation.x = V.jump > 1 ? 0.3 : Math.sin(ph + i * Math.PI) * 0.7; });
+    u.wheels.forEach(w => { w.rotation.x = V.dist / 0.43; });
     u.torso.rotation.x = tuck ? 0.85 : stand ? 0.35 : 0.55; u.torso.position.y = stand ? 1.15 : 0.95; u.torso.rotation.z = Math.sin(ph) * (stand ? 0.1 : 0.04);
     u.armL.rotation.set(-0.95, 0, 0); u.armR.rotation.set(-0.95, 0, 0); u.head.rotation.set(0, 0, 0); u.bottle.visible = false;
     if (gn === 'wave' || gn === 'thumbs') { u.armR.rotation.set(-3.0, 0, Math.sin(gt * 14) * 0.4 * (gn === 'wave' ? 1 : 0)); }
