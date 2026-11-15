@@ -7,7 +7,7 @@ Allenamento indoor sul ciclomulino, nel browser, nello stile dei giochi di cicli
 **Provalo subito:** https://eg99999.github.io/ciclomulino-app/ (Edge o Chrome su Windows; serve il Bluetooth)
 
 ## Cosa fa
-- Si collega al trainer via Bluetooth e imposta i watt (ERG). Se pedali sotto 60 rpm il carico scende al 50% da solo, quando recuperi torna al 100%.
+- Si collega al trainer via Bluetooth e imposta i watt (ERG). Se pedali sotto 40 rpm il carico scende al 50% da solo, quando recuperi torna al 100%.
 - Pausa automatica quando ti fermi, riconnessione se il segnale cade, salvataggio anti-crash.
 - Quattro stili 3D (voxel, low-poly retrò, diorama, HD-2D), percorsi reali della provincia di Brescia e GPX importati, ciclocomputer simulato.
 - Test FTP (rampa e 20 minuti), creatore di workout, storico, esportazione `.FIT` da importare su Garmin Connect.

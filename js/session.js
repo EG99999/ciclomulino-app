@@ -12,7 +12,7 @@ export class Session {
     this.plan = plan; this.ftp = ftp; this.steps = plan.steps;
     // pausa automatica: si ferma dopo 5 s con cadenza < 5 rpm e potenza < 8 W; riparte con cadenza ≥ 10 rpm oppure potenza ≥ 12 W per 2 s.
     // Il 9-11 nov 2026 il Suito-T riportava 5-13 rpm e 5-13 W pedalando piano: con le soglie di prima (30 rpm / 30 W) non ripartiva mai da solo.
-    this.cfg = { autoPauseSec: 5, autoResumeSec: 2, resumeCad: 10, resumeW: 12, ...ERG_CFG, ...cfg };
+    this.cfg = { autoPauseSec: 5, autoResumeSec: 1, resumeCad: 10, resumeW: 12, ...ERG_CFG, ...cfg };
     this.erg = new Erg(this.cfg);
     this.reset();
   }
@@ -97,8 +97,8 @@ export class Session {
     if (this.started && !this.done && connected) {
       const still = (!cadKnown || cad < 5) && power < 8;
       const moving = (cadKnown && cad >= this.cfg.resumeCad) || power >= this.cfg.resumeW;      // si riparte pedalando, anche piano; se la cadenza non arriva o resta a zero bastano i watt
-      // la pausa automatica scatta solo quando il ciclista si è fermato davvero: dopo aver smesso di pedalare prosegue per inerzia
-      if (!this.paused) { this.stillT = still ? this.stillT + dt : 0; if (this.stillT >= this.cfg.autoPauseSec && this.speed < 0.5) { this.stillT = 0; this.pause('auto'); } }
+      // pausa automatica dopo autoPauseSec (5 s) esatti senza pedalare (cadenza ~0 e watt ~0): l'inerzia dell'omino non allunga l'attesa, in pausa si ferma subito
+      if (!this.paused) { this.stillT = still ? this.stillT + dt : 0; if (this.stillT >= this.cfg.autoPauseSec) { this.stillT = 0; this.pause('auto'); } }
       // un dato basso isolato (a bassi giri la cadenza si aggiorna a scatti) non azzera tutto: il contatore scende piano invece di tornare a zero
       else if (this.pauseReason === 'auto') { this.moveT = moving ? this.moveT + dt : Math.max(0, this.moveT - dt * 0.5); if (this.moveT >= this.cfg.autoResumeSec) { this.moveT = 0; this.resume(); } }
     }

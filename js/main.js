@@ -967,7 +967,7 @@ function startTutorial() {
   const T = [
     { title: 'Il gioco in 1 minuto', text: 'La strada è al centro, i numeri ti stanno intorno. Ti mostro i pezzi uno alla volta: con AVANTI proseguire, con ESCI chiudi.' },
     { sel: '.cluster', title: 'I tuoi dati', text: 'In basso al centro: cadenza, <b>watt in grande colorati per zona</b> (con la media degli ultimi 3 secondi e il target), frequenza cardiaca e velocità.' },
-    { sel: '.hudl', title: 'FTP, carico e pendenza', text: 'In alto a sinistra: % FTP, watt per chilo, <b>carico ERG</b> (se pedali sotto 60 rpm per 5" scende al 50%, sopra 75 rpm per 3" torna al 100%), pendenza, il grafico degli ultimi 2 minuti e i prossimi step.' },
+    { sel: '.hudl', title: 'FTP, carico e pendenza', text: 'In alto a sinistra: % FTP, watt per chilo, <b>carico ERG</b> (se pedali sotto 40 rpm per 5" scende al 50%, sopra 75 rpm per 3" torna al 100%), pendenza, il grafico degli ultimi 2 minuti e i prossimi step.' },
     { sel: '#ribbon', title: 'La barra dell\'allenamento', text: 'Ogni colonna è uno step: altezza = watt, colore = zona. La linea bianca sei tu. Si vede quando hai caricato un piano.' },
     { sel: '.stepbar', title: 'Lo step in corso', text: 'Nome, tempo rimasto, serie e blocchi che mancano e il prossimo step. Un beep suona al cambio e negli ultimi 3 secondi.' },
     { sel: '.side', title: 'Altimetria e percorso', text: 'A sinistra il profilo del percorso (colore = pendenza), a destra la mappa con il tuo punto e i paesi.' },

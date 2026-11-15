@@ -11,8 +11,8 @@ const run = (s, secs, input) => { for (let i = 0; i < secs * 4; i++) s.update(0.
 test('pausa automatica: si riparte dai watt anche se il trainer non manda la cadenza (null)', () => {
   const s = mk(); run(s, 7, { power: 0, cad: null });
   assert.equal(s.paused, true); assert.equal(s.pauseReason, 'auto', 'fermo sui pedali: pausa automatica');
-  run(s, 1, { power: 150, cad: null }); assert.equal(s.paused, true, 'serve un attimo (2 s) di pedalata');
-  run(s, 2, { power: 150, cad: null }); assert.equal(s.paused, false, 'riparte da sola'); assert.ok(s.speed > 0, 'il ciclista si muove: ' + s.speed);
+  run(s, 0.5, { power: 150, cad: null }); assert.equal(s.paused, true, 'mezzo secondo di pedalata non basta');
+  run(s, 1, { power: 150, cad: null }); assert.equal(s.paused, false, 'dopo più di 1 s di pedalata riparte da sola'); assert.ok(s.speed > 0, 'il ciclista si muove: ' + s.speed);
 });
 
 test('pausa automatica: si riparte dai watt anche se la cadenza arriva ma resta a zero', () => {
@@ -37,8 +37,8 @@ test('un dato basso isolato durante la ripartenza non azzera il conteggio (a bas
 test('senza cadenza dal trainer la logica ERG sulla cadenza non scatta (prima: carico al 50% per sempre); con cadenza bassa vera scatta', () => {
   const a = mk(), evA = []; for (let i = 0; i < 80; i++) { a.update(0.25, { power: 110, cad: null, connected: true }); evA.push(...a.drain()); }
   assert.ok(!evA.some(e => e.type === 'reduce'), 'nessuna riduzione: la cadenza non c\'è'); assert.equal(a.erg.reduced, false);
-  const b = mk(), evB = []; for (let i = 0; i < 80; i++) { b.update(0.25, { power: 110, cad: 40, connected: true }); evB.push(...b.drain()); }
-  assert.ok(evB.some(e => e.type === 'reduce'), 'con 40 rpm veri il carico scende');
+  const b = mk(), evB = []; for (let i = 0; i < 80; i++) { b.update(0.25, { power: 110, cad: 30, connected: true }); evB.push(...b.drain()); }
+  assert.ok(evB.some(e => e.type === 'reduce'), 'con 30 rpm veri (sotto i 40) il carico scende');
 });
 
 test('chi pedala normalmente con la cadenza non vede cambiare niente', () => {

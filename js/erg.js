@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Gatti Elia
 // Logica ERG adattiva (confermata con il coach):
-//  cadenza < 60 rpm per 5"  -> carico scende al 50% in 10"
+//  cadenza < 40 rpm per 5"  -> carico scende al 50% in 10"   (era 60: abbassato da Elia il 15 nov 2026)
 //  cadenza > 75 rpm per 3"  -> carico torna al 100% in 10"
 export const ERG_CFG = {
-  lowRpm: 60, lowSec: 5,
+  lowRpm: 40, lowSec: 5,
   highRpm: 75, highSec: 3,
   reduced: 0.5,
   rampSec: 10,        // durata della rampa 100% <-> 50%

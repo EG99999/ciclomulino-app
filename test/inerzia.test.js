@@ -21,12 +21,12 @@ test("smetti di pedalare: il ciclista prosegue per inerzia e rallenta piano, sen
   const v1 = s.speed; run(s, 1, { power: 0, cad: 0 }); assert.ok(s.speed < v1 && s.speed > 0, "rallenta ma non si ferma: " + s.speed);
   assert.ok(s.dist - d0 > v0 * 1.2, "ha percorso ancora strada: " + (s.dist - d0));
 });
-test("pausa automatica: scatta solo quando il ciclista si è fermato davvero (in base alla velocità che aveva), poi si riparte pedalando", () => {
+test("pausa automatica: dopo 5 secondi esatti senza pedalare (anche se l'omino scorre ancora per inerzia), poi si riparte pedalando per più di 1 secondo", () => {
   const s = mk(); run(s, 20, { power: 200, cad: 85 });
-  run(s, 6, { power: 0, cad: 0 }); assert.equal(s.paused, false, "ha smesso da 6 s ma sta ancora scorrendo: " + s.speed.toFixed(2) + " m/s");
-  let t = 0; while (!s.paused && t < 60) { run(s, 1, { power: 0, cad: 0 }); t++; }
-  assert.equal(s.paused, true, "alla fine si ferma e va in pausa"); assert.equal(s.pauseReason, "auto"); assert.ok(t >= 1 && t < 40, "dopo " + t + " s di inerzia");
-  run(s, 3, { power: 150, cad: 80 }); assert.equal(s.paused, false, "riparte da solo pedalando");
+  run(s, 4.8, { power: 0, cad: 0 }); assert.equal(s.paused, false, "ha smesso da 4,8 s: ancora no"); assert.ok(s.speed > 0.5, "scorre ancora: " + s.speed.toFixed(2) + " m/s");
+  run(s, 0.4, { power: 0, cad: 0 }); assert.equal(s.paused, true, "a 5 s va in pausa"); assert.equal(s.pauseReason, "auto"); assert.equal(s.speed, 0, "in pausa l'omino è fermo");
+  run(s, 0.8, { power: 150, cad: 80 }); assert.equal(s.paused, true, "meno di 1 s di pedalata: ancora in pausa");
+  run(s, 0.7, { power: 150, cad: 80 }); assert.equal(s.paused, false, "dopo più di 1 s riparte da solo");
 });
 test("una partenza nuova ricostruisce il mondo anche alla stessa distanza (altrimenti restavano ostacoli visibili ma ignorati)", () => {
   const a = G.V.clearGen || 0; G.clearStart(0); G.clearStart(0); assert.equal(G.V.clearGen, a + 2);
