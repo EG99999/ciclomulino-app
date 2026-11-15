@@ -43,8 +43,8 @@ export class Coach {
       case 'step': this.say(stepMessage(e.step, s.next, this.rnd), e.step.t === 'interval' ? 'warn' : 'good'); this.stepSeen = e.idx; this.last10 = -1; this.quiet = 0; break;
       case 'reduce': this.say(pick(POOL.reduce, this.rnd), 'warn'); break;
       case 'restore': this.say(pick(POOL.restore, this.rnd), 'good'); break;
-      case 'pause': this.say(e.reason === 'auto' ? 'Ti sei fermato: pausa automatica. Riparti e riprendo.' : e.reason === 'trainer' ? 'Trainer scollegato: seduta in pausa.' : 'Pausa. Carico minimo.', 'info'); break;
-      case 'resume': this.say('Si riparte! Rampa di 8 secondi.', 'good'); break;
+      case 'pause': this.say(e.reason === 'auto' ? (e.needW ? 'Ti sei fermato: pausa. Pedala libero e riattivo l\'ERG quando tieni ' + e.needW + ' W per 3 secondi.' : 'Ti sei fermato: pausa automatica. Riparti e riprendo.') : e.reason === 'trainer' ? 'Trainer scollegato: seduta in pausa.' : 'Pausa. Carico minimo.', 'info'); break;
+      case 'resume': this.say(e.reason === 'auto' ? 'ERG riattivato: si riparte!' : 'Si riparte! Rampa di 8 secondi.', 'good'); break;
       case 'finish': this.say(e.reason === 'stopped' ? 'Seduta terminata. Scarica il .FIT.' : 'Seduta completata! Grande lavoro' + (this.name ? ', ' + this.name : '') + '.', 'good'); break;
       case 'hit': this.say(pick(POOL.hit, this.rnd), 'warn'); break;
       case 'jump': this.say(pick(POOL.jump, this.rnd), 'good'); break;

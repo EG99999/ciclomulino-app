@@ -504,8 +504,8 @@ function handleEvents(s) {
       case 'tick': Au.tickBeep(); break;
       case 'reduce': G.gesture('shake'); Au.reduceBeep(); logEv('Cadenza <' + ERG_CFG.lowRpm + ' → carico 50%'); break;
       case 'restore': Au.restoreBeep(); logEv('Cadenza >' + ERG_CFG.highRpm + ' → carico ripristinato'); break;
-      case 'pause': logEv(e.reason === 'trainer' ? 'Pausa automatica (trainer)' : e.reason === 'auto' ? 'Pausa automatica (fermo)' : 'Pausa manuale'); break;
-      case 'resume': logEv('Ripresa'); break;
+      case 'pause': if (e.reason === 'auto') Au.blip(); logEv(e.reason === 'trainer' ? 'Pausa automatica (trainer)' : e.reason === 'auto' ? 'Pausa automatica (fermo)' : 'Pausa manuale'); break;
+      case 'resume': if (e.reason === 'auto') Au.restoreBeep(); logEv(e.reason === 'auto' ? 'ERG riattivato' : 'Ripresa'); break;
       case 'finish': G.gesture('cheer'); Au.finishBeep(); Au.cheer(); logEv(e.reason === 'stopped' ? 'Seduta terminata' : 'Seduta completata'); showDone(); break;
     }
   }
@@ -585,7 +585,7 @@ function ui() {
   else if (!s.started) m = 'PRONTO · PREMI AVVIA';
   else if (s.paused) {
     if (s.pauseReason === 'trainer') { m = connected ? 'TRAINER RICONNESSO · PREMI RIPRENDI' : 'TRAINER SCOLLEGATO · PAUSA'; b.classList.add('red'); }
-    else if (s.pauseReason === 'auto') m = 'FERMO · PAUSA AUTOMATICA · RIPARTI A PEDALARE';
+    else if (s.pauseReason === 'auto') m = s.needW ? 'FERMO · PEDALA LIBERO · TIENI ' + s.needW + ' W PER ' + s.cfg.resumeHoldSec + ' s PER RIATTIVARE L\'ERG' : 'FERMO · PAUSA AUTOMATICA · RIPARTI A PEDALARE';
     else m = 'PAUSA · CARICO MINIMO';
   }
   else if (s.erg.reduced && A.mode !== 'keys') { m = 'CARICO RIDOTTO 50% · PEDALA >' + ERG_CFG.highRpm + ' RPM PER RIPRENDERE'; b.classList.add('red'); }
@@ -654,7 +654,13 @@ function logicTick() {
       if (A.sim && tr) { tr.tick(h); if (A.hrDev && A.hrDev.tick) A.hrDev.tick(); }
       if (tr && tr.kind === 'ble' && s.started && performance.now() - A.inp.lastData > 4000) { A.inp.power = 0; A.inp.cad = 0; }
       const target = s.update(h, { power: A.inp.power, cad: A.inp.cadSeen ? A.inp.cad : null, hr: A.inp.hr, connected: !!(tr && tr.connected), grade: A.route ? A.route.gradeAt(A.startDist + s.dist) : null });
-      if (tr && tr.connected && s.started && !s.done && A.mode !== 'keys' && A.mode !== 'free') tr.setTargetPower(target);
+      if (tr && tr.connected && s.started && !s.done && A.mode !== 'keys' && A.mode !== 'free') {
+        // dopo lo stop da fermo il trainer si libera (modalità a pendenza 0%): in ERG a 50 W la potenza resterebbe inchiodata a 50 W e non potresti mai arrivare a quella dello step.
+        // Se il trainer non accetta la modalità a pendenza si torna alla ripartenza semplice (basta pedalare 1 s) con l'ERG a 50 W.
+        if (s.paused && s.pauseReason === 'auto' && s.needW && tr.simUnsupported) s.needW = 0;
+        if (s.paused && s.pauseReason === 'auto' && s.needW && tr.setSimulation) { if (A.simGrade !== 0) { A.simGrade = 0; tr.setSimulation(0); } }
+        else { A.simGrade = null; tr.setTargetPower(target); }
+      }
       if (A.mode === 'free' && tr && tr.connected && s.started && !s.done) {
         if (tr.simUnsupported || !tr.setSimulation) tr.setTargetPower(s.paused ? 50 : A.freeTarget);
         else if (s.paused) { if (A.simGrade !== 0) { A.simGrade = 0; tr.setSimulation(0); } } else if (Math.abs(s.grade - (A.simGrade ?? 99)) >= 0.3) { A.simGrade = s.grade; tr.setSimulation(s.grade); }
@@ -967,7 +973,7 @@ function startTutorial() {
   const T = [
     { title: 'Il gioco in 1 minuto', text: 'La strada è al centro, i numeri ti stanno intorno. Ti mostro i pezzi uno alla volta: con AVANTI proseguire, con ESCI chiudi.' },
     { sel: '.cluster', title: 'I tuoi dati', text: 'In basso al centro: cadenza, <b>watt in grande colorati per zona</b> (con la media degli ultimi 3 secondi e il target), frequenza cardiaca e velocità.' },
-    { sel: '.hudl', title: 'FTP, carico e pendenza', text: 'In alto a sinistra: % FTP, watt per chilo, <b>carico ERG</b> (se pedali sotto 40 rpm per 5" scende al 50%, sopra 75 rpm per 3" torna al 100%), pendenza, il grafico degli ultimi 2 minuti e i prossimi step.' },
+    { sel: '.hudl', title: 'FTP, carico e pendenza', text: 'In alto a sinistra: % FTP, watt per chilo, <b>carico ERG</b>, pendenza, il grafico degli ultimi 2 minuti e i prossimi step.' },
     { sel: '#ribbon', title: 'La barra dell\'allenamento', text: 'Ogni colonna è uno step: altezza = watt, colore = zona. La linea bianca sei tu. Si vede quando hai caricato un piano.' },
     { sel: '.stepbar', title: 'Lo step in corso', text: 'Nome, tempo rimasto, serie e blocchi che mancano e il prossimo step. Un beep suona al cambio e negli ultimi 3 secondi.' },
     { sel: '.side', title: 'Altimetria e percorso', text: 'A sinistra il profilo del percorso (colore = pendenza), a destra la mappa con il tuo punto e i paesi.' },
@@ -979,7 +985,7 @@ function startTutorial() {
     { sel: '#btnSim', before: () => menuOpen(true), title: 'Simulatore', text: 'Fa finta di essere trainer e cardio: perfetto per provare tutto senza pedalare. Puoi anche simulare fatica e perdita di segnale.' },
     { sel: '#btnKeys', before: () => menuOpen(true), title: 'Modalità tastiera', text: 'Una modalità gioco: ↑ pedala, ← → sterza, Spazio salta le buche e i lavori in corso.' },
     { sel: '#cloudBox', before: () => menuOpen(true), title: 'OneDrive (facoltativo)', text: 'Se vuoi, il piano arriva da OneDrive e i .FIT ci vengono salvati da soli. L\'app vede solo la sua cartella «Apps/Open Trainer».' },
-    { sel: '#btnGo', before: () => menuOpen(false), title: 'Avvia e riprendi', text: 'Il pulsante compare al centro solo quando sei fermo (o prima di partire). Per pausa e ripresa c\'è anche Spazio. Se ti fermi sui pedali va in pausa da sola e riparte appena pedali.' },
+    { sel: '#btnGo', before: () => menuOpen(false), title: 'Avvia e riprendi', text: 'Il pulsante compare al centro solo quando sei fermo (o prima di partire). Per pausa e ripresa c\'è anche Spazio. Se ti fermi sui pedali per 5 secondi va in pausa da sola (blip) e il trainer si libera: pedala piano quanto vuoi, quando tieni per 3 secondi la potenza dello step l\'ERG si riattiva da solo.' },
     { sel: '#btnCam', before: () => menuOpen(true), title: 'Vista', text: 'Cambia tra vista da dietro e prima persona (tasto <b>V</b>). <b>F</b> schermo intero, <b>N</b> suoni.' },
     { title: 'Non perdi niente', text: 'La seduta si salva ogni 5": se il browser si chiude ti propone di riprendere o di scaricare il .FIT. A fine seduta scarichi il file da importare su Garmin Connect.' }
   ];

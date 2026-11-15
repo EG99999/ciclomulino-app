@@ -10,9 +10,11 @@ export class Session {
   /** @param plan seduta già validata (parsePlan) @param ftp numero */
   constructor(plan, ftp, cfg = {}) {
     this.plan = plan; this.ftp = ftp; this.steps = plan.steps;
-    // pausa automatica: si ferma dopo 5 s con cadenza < 5 rpm e potenza < 8 W; riparte con cadenza ≥ 10 rpm oppure potenza ≥ 12 W per 2 s.
+    // pausa automatica (come Zwift): dopo 5 s con cadenza < 5 rpm e potenza < 8 W (l'inerzia dell'omino non conta) il gioco va in pausa e il trainer a carico minimo.
+    // Con l'ERG: si pedala libero e l'ERG torna quando la potenza media degli ultimi resumeHoldSec (3 s) arriva al limite basso dello step.
+    // Senza ERG (pedalata libera, test FTP): riparte con cadenza ≥ 10 rpm oppure potenza ≥ 12 W per autoResumeSec (1 s).
     // Il 9-11 nov 2026 il Suito-T riportava 5-13 rpm e 5-13 W pedalando piano: con le soglie di prima (30 rpm / 30 W) non ripartiva mai da solo.
-    this.cfg = { autoPauseSec: 5, autoResumeSec: 1, resumeCad: 10, resumeW: 12, ...ERG_CFG, ...cfg };
+    this.cfg = { autoPauseSec: 5, autoResumeSec: 1, resumeCad: 10, resumeW: 12, resumeHoldSec: 3, ...ERG_CFG, ...cfg };
     this.erg = new Erg(this.cfg);
     this.reset();
   }
@@ -23,7 +25,7 @@ export class Session {
       t: 0, idx: 0, stepT: 0, stepDist: 0, dist: 0, speed: 0,
       fromW: this.cfg.minLoadW, rampT: 0, base: 0, targetW: 0,
       samples: [], stAcc: 0, stAccT: 0, totAcc: 0, totT: 0, hrAcc: 0, hrN: 0,
-      records: [], nextRec: 1, lastBeep: 99, events: [], startedAt: null, maxP: 0, kj: 0, stillT: 0, moveT: 0, grade: 0, bias: 0
+      records: [], nextRec: 1, lastBeep: 99, events: [], startedAt: null, maxP: 0, kj: 0, stillT: 0, moveT: 0, grade: 0, bias: 0, needW: 0, rBuf: []
     });
   }
   get step() { return this.steps[Math.min(this.idx, this.steps.length - 1)]; }
@@ -56,13 +58,18 @@ export class Session {
   }
   pause(reason = 'manual') {
     if (!this.started || this.paused || this.done) return;
-    this.paused = true; this.pauseReason = reason; this.emit('pause', { reason });
+    this.paused = true; this.pauseReason = reason; this.rBuf = [];
+    // con l'ERG, dopo una pausa automatica si riparte tenendo la potenza dello step (limite basso, almeno resumeW)
+    this.needW = reason === 'auto' && !this.cfg.noErg ? Math.max(this.cfg.resumeW, Math.round(this.step.lo)) : 0;
+    this.emit('pause', { reason, needW: this.needW });
   }
-  resume() {
+  /** fromW: potenza da cui parte la rampa (ripartenza automatica: quella che stai già facendo); senza, riparte dal carico minimo */
+  resume(fromW = null) {
     if (!this.paused) return;
-    this.paused = false; this.pauseReason = '';
-    this.fromW = this.cfg.minLoadW; this.rampT = 0;       // riparte da carico minimo con rampa
-    this.emit('resume');
+    const reason = this.pauseReason;
+    this.paused = false; this.pauseReason = ''; this.needW = 0; this.rBuf = [];
+    this.fromW = fromW != null ? Math.max(this.cfg.minLoadW, fromW) : this.cfg.minLoadW; this.rampT = 0;       // rampa verso il target dello step
+    this.emit('resume', { reason });
   }
   togglePause() { this.paused ? this.resume() : this.pause('manual'); }
   /** regola il carico dello step (solo se lo step lo permette, es. test FTP 20'): ±watt */
@@ -99,7 +106,15 @@ export class Session {
       const moving = (cadKnown && cad >= this.cfg.resumeCad) || power >= this.cfg.resumeW;      // si riparte pedalando, anche piano; se la cadenza non arriva o resta a zero bastano i watt
       // pausa automatica dopo autoPauseSec (5 s) esatti senza pedalare (cadenza ~0 e watt ~0): l'inerzia dell'omino non allunga l'attesa, in pausa si ferma subito
       if (!this.paused) { this.stillT = still ? this.stillT + dt : 0; if (this.stillT >= this.cfg.autoPauseSec) { this.stillT = 0; this.pause('auto'); } }
-      // un dato basso isolato (a bassi giri la cadenza si aggiorna a scatti) non azzera tutto: il contatore scende piano invece di tornare a zero
+      else if (this.pauseReason === 'auto' && this.needW) {
+        // ERG: pedali libero a carico minimo; l'ERG e il gioco ripartono quando per 3 s di fila tieni almeno l'85% di needW e la media arriva a needW
+        const b = this.rBuf, hold = this.cfg.resumeHoldSec; b.push({ dt, p: power });
+        let span = 0, acc = 0; for (const x of b) { span += x.dt; acc += x.p * x.dt; }
+        while (b.length > 1 && span - b[0].dt >= hold - 1e-9) { span -= b[0].dt; acc -= b[0].p * b[0].dt; b.shift(); }
+        const avg = span > 0 ? acc / span : 0;
+        if (span >= hold - 1e-9 && avg >= this.needW && b.every(x => x.p >= this.needW * 0.85)) this.resume(Math.min(avg, this.step.mid));
+      }
+      // senza ERG: un dato basso isolato (a bassi giri la cadenza si aggiorna a scatti) non azzera tutto: il contatore scende piano invece di tornare a zero
       else if (this.pauseReason === 'auto') { this.moveT = moving ? this.moveT + dt : Math.max(0, this.moveT - dt * 0.5); if (this.moveT >= this.cfg.autoResumeSec) { this.moveT = 0; this.resume(); } }
     }
     const active = this.active;

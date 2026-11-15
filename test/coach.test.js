@@ -33,8 +33,10 @@ test('auto-pausa quando ti fermi, ripresa automatica quando riparti', () => {
   const t0 = s.t; for (let i = 0; i < 4 * 6; i++) s.update(0.25, { power: 0, cad: 0 });
   assert.ok(s.paused && s.pauseReason === 'auto'); assert.ok(s.t - t0 < 5.5, 'il tempo non corre da fermo: ' + (s.t - t0));
   assert.equal(s.targetW, 50);
-  for (let i = 0; i < 4 * 3; i++) s.update(0.25, { power: 60, cad: 70 });
-  assert.ok(!s.paused, 'riparte da solo');
+  for (let i = 0; i < 4 * 6; i++) s.update(0.25, { power: 60, cad: 70 });
+  assert.ok(s.paused, 'pedalare piano (60 W) non basta: serve il limite basso dello step (100 W) per 3 s');
+  for (let i = 0; i < 4 * 4; i++) s.update(0.25, { power: 110, cad: 85 });
+  assert.ok(!s.paused, 'con 110 W per 3 s l\'ERG riparte da solo');
 });
 test('un trainer scollegato NON riparte da solo (solo la pausa automatica per fermo lo fa)', () => {
   const s = new Session(plan.sessions[0], 271); s.start(); s.update(0.25, { power: 100, cad: 90, connected: false });

@@ -102,7 +102,8 @@ export const beep = (f = 880, d = 0.2) => play('beep-1', { g: 0.25 }) || tone({ 
 export const stepBeep = () => { if (!(play('beep-1', { g: 0.25 }) && play('beep-1', { g: 0.25, at: 0.2 }))) tone({ f: 880, d: 0.35, type: 'square', g: 0.04 }); };
 export const tickBeep = () => play('beep-2', { g: 0.2 }) || tone({ f: 660, d: 0.1, type: 'square', g: 0.04 });
 export const reduceBeep = () => { if (!(play('beep-1', { g: 0.25, rate: 0.62 }) && play('beep-1', { g: 0.25, rate: 0.62, at: 0.25 }))) tone({ f: 300, d: 0.3, type: 'square', g: 0.04 }); };
-export const restoreBeep = () => { if (!(play('beep-1', { g: 0.25, rate: 1.2 }) && play('beep-1', { g: 0.25, rate: 1.5, at: 0.2 }))) tone({ f: 700, d: 0.2, type: 'square', g: 0.04 }); };
+export const blip = () => play('beep-2', { g: 0.3, rate: 0.7 }) || tone({ f: 420, d: 0.12, type: 'square', g: 0.04 });
+export const restoreBeep =() => { if (!(play('beep-1', { g: 0.25, rate: 1.2 }) && play('beep-1', { g: 0.25, rate: 1.5, at: 0.2 }))) tone({ f: 700, d: 0.2, type: 'square', g: 0.04 }); };
 export const finishBeep = () => play('beep-fine', { g: 0.25 }) || (tone({ f: 900, d: 0.15, type: 'square', g: 0.04 }), tone({ f: 1200, d: 0.4, at: 0.18, g: 0.04 }));
 
 /* ---------- strada ---------- */

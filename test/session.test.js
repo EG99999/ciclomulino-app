@@ -13,7 +13,7 @@ test('seduta completa senza fatica: nessuna riduzione, 2700 record, setpoint al 
   const avg = mid.reduce((a, r) => a + r.p, 0) / mid.length; assert.ok(Math.abs(avg - 311.5) < 6, 'potenza ~311.5, trovata ' + avg);
 });
 test('con fatica simulata scatta riduzione e ripristino', () => {
-  const { log } = runSim(0, { fatigue: true });
+  const { log } = runSim(0, { fatigue: true, cfg: { lowRpm: 40 } });     // la soglia sui giri è disattivata di serie: qui la si accende
   assert.ok(log.some(e => e.type === 'reduce')); assert.ok(log.some(e => e.type === 'restore'));
 });
 test('rampa di 8" al cambio step e carico 50% rispetto al setpoint', () => {
