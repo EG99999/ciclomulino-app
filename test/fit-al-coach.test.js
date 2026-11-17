@@ -3,7 +3,7 @@
 // Spedizione dei .FIT verso il repository del coach (da lì un'Action li carica su Garmin): selezione dei file, copia, push solo se serve.
 import test from 'node:test'; import assert from 'node:assert/strict';
 import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
-import { pickNew, run, checkFit } from '../tools/fit-al-coach.mjs';
+import { pickNew, run, checkFit, titleFor } from '../tools/fit-al-coach.mjs';
 
 const fitBytes = () => { const b = Buffer.alloc(40); b.write('.FIT', 8, 'latin1'); b[0] = 14; return b; };
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'fitco-'));
@@ -61,4 +61,22 @@ test('run --dry-run: non copia e non usa git', () => {
 test('pickNew: --since lascia stare i file più vecchi (le prove di giorni fa non vanno a Garmin)', () => {
   const src = tmp(); put(src, 'vecchio.fit', fitBytes(), 5 * 86400); put(src, 'oggi.fit', fitBytes(), 600);
   const r = pickNew(src, {}, { since: Date.now() - 86400 * 1000 }); assert.deepEqual(r.files.map(f => f.name), ['oggi.fit']);
+});
+
+test('titleFor: il nome della seduta pianificata (apostrofo compreso), non quello generico; coach grezzo o formato app; ripiego sullo storico', () => {
+  const plan = { sessions: [{ date: '2026-11-17', title: "Ciclomulino z2 40'" }, { date: '2026-11-18', title: 'Altro' }] };
+  assert.equal(titleFor('20261117-062410-ciclomulino-z2-40.fit', { plan }), "Ciclomulino z2 40'");
+  const grezzo = [{ data: '2026-11-17', titolo: "Ciclomulino z2 40'" }];
+  assert.equal(titleFor('20261117-0624-ciclomulino-z2-40.fit', { plan: grezzo }), "Ciclomulino z2 40'");
+  assert.equal(titleFor('20261117-062410-ciclomulino-z2-40.fit', { plan: { sessions: [] }, history: [{ fit: '20261117-062410-ciclomulino-z2-40.fit', title: 'Ciclomulino z2 40' }] }), 'Ciclomulino z2 40', 'senza piano si usa lo storico');
+  assert.equal(titleFor('20261117-062410-ciclomulino-z2-40.fit', { plan: { sessions: [{ date: '2026-11-17', title: 'Un altro titolo' }] } }), null, 'nessuna corrispondenza: nome di Garmin');
+  assert.equal(titleFor('qualunque.fit', { plan }), null);
+});
+
+test('run: accanto al .fit scrive il .json col titolo, e fa commit di entrambi', () => {
+  const src = tmp(), repo = tmp(); put(src, '20261117-062410-ciclomulino-z2-40.fit', fitBytes()); const g = fakeGit();
+  const r = run({ src, repo, state: {}, git: g, titleOf: n => titleFor(n, { plan: { sessions: [{ date: '2026-11-17', title: "Ciclomulino z2 40'" }] } }) });
+  assert.equal(r.esito, 'spediti');
+  const side = path.join(repo, 'fit', 'inbox', '20261117-062410-ciclomulino-z2-40.json');
+  assert.deepEqual(JSON.parse(fs.readFileSync(side, 'utf8')), { title: "Ciclomulino z2 40'" });
 });
